@@ -58,6 +58,10 @@ CProcessMemoryEditorDlg::CProcessMemoryEditorDlg(CWnd* pParent /*=NULL*/)
 
 CProcessMemoryEditorDlg::~CProcessMemoryEditorDlg()
 {
+    if (nullptr != m_fontBold.GetSafeHandle()) {
+        m_fontBold.DeleteObject();
+    }
+
     if (nullptr != m_hHookEngineDLL) {
         if (FreeLibrary(m_hHookEngineDLL)) {
             m_hHookEngineDLL = nullptr;
@@ -96,6 +100,9 @@ void CProcessMemoryEditorDlg::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, IDC_RAD_HEXA, m_radHexa);
     DDX_Control(pDX, IDC_RAD_DECIMAL, m_radDecimal);
     DDX_Control(pDX, IDC_BTN_STOP_SEARCH, m_btnStopSearch);
+    DDX_Control(pDX, IDC_GRP_PROCESS, m_grpProcess);
+    DDX_Control(pDX, IDC_GRP_INJECTION, m_grpInjection);
+    DDX_Control(pDX, IDC_GRP_SEARCH, m_grpSearch);
 }
 
 BEGIN_MESSAGE_MAP(CProcessMemoryEditorDlg, CDialogEx)
@@ -127,7 +134,6 @@ BEGIN_MESSAGE_MAP(CProcessMemoryEditorDlg, CDialogEx)
     ON_BN_CLICKED(IDC_RAD_HEXA, &CProcessMemoryEditorDlg::OnBnClickedRadHexa)
     ON_BN_CLICKED(IDC_RAD_DECIMAL, &CProcessMemoryEditorDlg::OnBnClickedRadDecimal)
     ON_BN_CLICKED(IDC_BTN_STOP_SEARCH, &CProcessMemoryEditorDlg::OnBnClickedBtnStopSearch)
-    ON_NOTIFY(NM_CUSTOMDRAW, IDC_PRGB_SEARCH, &CProcessMemoryEditorDlg::OnNMCustomdrawPrgbSearch)
 END_MESSAGE_MAP()
 
 
@@ -168,6 +174,19 @@ BOOL CProcessMemoryEditorDlg::OnInitDialog()
     m_sttProcessFromWnd.SetBitmap(m_hFindBmp);
 
     CheckDlgButton(IDC_RAD_DECIMAL, BST_CHECKED);
+
+    CFont* pFont = GetFont();
+    if(nullptr != pFont) {
+        LOGFONT lf = { 0 };
+        if (pFont->GetLogFont(&lf) > 0) {
+            lf.lfWeight = FW_BOLD;
+            if (m_fontBold.CreateFontIndirect(&lf)) {
+                m_grpSearch.SetFont(&m_fontBold);
+                m_grpInjection.SetFont(&m_fontBold);
+                m_grpProcess.SetFont(&m_fontBold);
+            }
+        }
+    }
 
 	return TRUE;
 }
@@ -536,6 +555,7 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
         m_prgbSearch.ModifyStyle(0, PBS_MARQUEE);
         m_prgbSearch.SetPos(0);
         m_prgbSearch.ShowWindow(SW_SHOW);
+        m_btnStopSearch.ShowWindow(SW_SHOW);
 
         CString strStatus;
         strStatus = _T("Total: 0 matched addresses");
@@ -571,6 +591,8 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
 
         m_prgbSearch.SetPos(0);
         m_prgbSearch.ShowWindow(SW_HIDE);
+        m_btnStopSearch.ShowWindow(SW_HIDE);
+
         m_sttStatusText.ShowWindow(SW_SHOW);
 
         EThreadExitCode nError = EThreadExitCode::eSuccess;
@@ -579,8 +601,8 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
             nError = static_cast<EThreadExitCode>( m_pSearchThread->ExitCode() );
         }
 
-        m_lvwResults.SetItemCount(m_arrMatchAddress.GetCount());
-        m_lvwResults.RedrawItems(0, m_arrMatchAddress.GetCount() - 1);
+        m_lvwResults.SetItemCount(static_cast<int>( m_arrMatchAddress.GetCount()) );
+        m_lvwResults.RedrawItems(0, static_cast<int>( m_arrMatchAddress.GetCount() - 1) );
 
         switch (nError)
         {
@@ -1413,12 +1435,4 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnStopSearch()
             return;
         }
     }
-}
-
-
-void CProcessMemoryEditorDlg::OnNMCustomdrawPrgbSearch(NMHDR *pNMHDR, LRESULT *pResult)
-{
-    LPNMCUSTOMDRAW pNMCD = reinterpret_cast<LPNMCUSTOMDRAW>(pNMHDR);
-    // TODO: Add your control notification handler code here
-    *pResult = 0;
 }

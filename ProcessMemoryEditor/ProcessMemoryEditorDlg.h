@@ -96,6 +96,9 @@ private:
     CButton m_radHexa;
     CButton m_radDecimal;
     CButton m_btnStopSearch;
+    CFont m_fontBold;
 public:
-    afx_msg void OnNMCustomdrawPrgbSearch(NMHDR *pNMHDR, LRESULT *pResult);
+    CStatic m_grpProcess;
+    CStatic m_grpInjection;
+    CStatic m_grpSearch;
 };

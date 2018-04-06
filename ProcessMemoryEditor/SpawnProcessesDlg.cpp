@@ -328,8 +328,8 @@ void CSpawnProcessesDlg::OnBnClickedBtnSearchProcName()
     strSub.Format(_T("Total: %d processes"), m_lstFilteredProcesses.size());
     SetDlgItemText(IDC_STT_STATUS, strSub);
 
-    m_lvwProcesses.SetItemCount(m_lstFilteredProcesses.size());
-    m_lvwProcesses.RedrawItems(0, m_lstFilteredProcesses.size() - 1);
+    m_lvwProcesses.SetItemCount(static_cast<int>( m_lstFilteredProcesses.size()) );
+    m_lvwProcesses.RedrawItems(0, static_cast<int>( m_lstFilteredProcesses.size() - 1) );
 
 }
 
