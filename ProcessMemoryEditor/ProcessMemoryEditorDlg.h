@@ -5,7 +5,8 @@
 #pragma once
 #include "afxwin.h"
 #include "afxcmn.h"
-#include "SearchThread.h"
+#include "MemorySearchThread.h"
+#include "MouseHookEngine.h"
 
 // CProcessMemoryEditorDlg dialog
 class CProcessMemoryEditorDlg : public CDialogEx
@@ -36,36 +37,65 @@ private:
     afx_msg void OnEnChangeEdtSeachValue();
     afx_msg void OnCbnSelchangeCbDataType();
     afx_msg void OnLvnItemchangedLvwResults(NMHDR *pNMHDR, LRESULT *pResult);
+    afx_msg void OnEnChangeEdtData();
+    afx_msg void OnBnClickedBtnSave();
+    afx_msg void OnBnClickedBtnBrowseLaunch();
+    afx_msg void OnBnClickedChbTopmost();
+    afx_msg void OnBnClickedBtnSearchInAddresses();
+    afx_msg void OnLvnGetdispinfoLvwResults(NMHDR *pNMHDR, LRESULT *pResult);
+    afx_msg void OnEnChangeEdtAddress();
+    afx_msg void OnBnClickedBtnRead();
+    afx_msg LRESULT OnMouseHookEngineNotify(WPARAM wParam, LPARAM lParam);
+    afx_msg void OnBnClickedRadHexa();
+    afx_msg void OnBnClickedRadDecimal();
+    afx_msg void OnBnClickedBtnStopSearch();
 private:
     BOOL IsNumeric(LPCTSTR lpszString);
     void EnableWindows(HWND hWnd, BOOL bEnable);
     void RestoreWindowsEnable(HWND hWnd);
     void OnListResultItemChanged();
+    BOOL PreTranslateMessage(MSG* pMsg);
+    BOOL IsMyWindowFamily(CWnd* pWnd);
 private:
+    static UINT s_nHookEngineNotifyMsg;
+    ESearch m_eSeachKind;
+    IHookManager* m_pHookManager;
+    HINSTANCE m_hHookEngineDLL;
+    CMouseHookEngine* m_pMouseHookEngine;
 	HICON m_hIcon;
+    HBITMAP m_hFindBmp;
+    HBITMAP m_hFindingBmp;
+    HCURSOR m_hPrevCursor;
+    HCURSOR m_hFindingCursor;
     CEdit m_edtProcessName;
     CButton m_btnBrowseProcess;
     CEdit m_edtProcessID;
-    static UINT s_nCommunicateMessage;   
+    static UINT s_nSearchThreadNotifyMsg;   
     CButton m_btnSpawnProcess;
-    CButton m_btnSearch;
+    CButton m_btnSearchWhole;
     CEdit m_edtSearchValue;
     CListCtrl m_lvwResults;
     CComboBox m_cboDataTypes;
-    CSearchThread* m_pSearchThread;
+    CMemorySearchThread* m_pSearchThread;
     CMap<HWND,HWND,BOOL, BOOL> m_mapWndEnable;
     CProgressCtrl m_prgbSearch;
     CButton m_radProcName;
     CButton m_radProcID;
     UINT_PTR m_nTimerID;
-public:
-    
     CEdit m_edtMemoryData;
+    DWORD m_dwProcessId;
     CButton m_btnSaveData;
     CEdit m_edtMemoryAddr;
-    afx_msg void OnEnChangeEdtData();
-    afx_msg void OnBnClickedBtnSave();
     CButton m_btnLaunchProcess;
-    afx_msg void OnBnClickedBtnBrowseLaunch();
-    afx_msg void OnBnClickedChbTopmost();
+    CButton m_btnSearchInAddresses;
+    CArray<LPVOID, LPVOID> m_arrMatchAddress;
+    CButton m_btnReadProcessMemory;
+    CEdit m_edtDataLength;
+    CStatic m_sttProcessFromWnd;
+    CStatic m_sttStatusText;
+    CButton m_radHexa;
+    CButton m_radDecimal;
+    CButton m_btnStopSearch;
+public:
+    afx_msg void OnNMCustomdrawPrgbSearch(NMHDR *pNMHDR, LRESULT *pResult);
 };

@@ -48,13 +48,19 @@ typedef enum EThreadNotifyCode_
     eUnknown = 0,
     eStart,
     eData,
+    eProgressRange,
+    eProgressValue,
     eFinish
 }EThreadNotifyCode;
 
 
 typedef enum EThreadExitCode_
 {
-    eThreadExitSuccess = 0,
+    eSuccess = 0,
+    eInvalidProcessId,
+    eProcesssOpenFailed,
+    eProcesssDuplicateFailed,
+    eUserAborted
 }EThreadExitCode;
 
 #ifdef _UNICODE

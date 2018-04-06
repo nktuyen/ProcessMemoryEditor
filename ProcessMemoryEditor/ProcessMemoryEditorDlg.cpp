@@ -12,18 +12,58 @@
 #define new DEBUG_NEW
 #endif
 
-UINT CProcessMemoryEditorDlg::s_nCommunicateMessage = 0;
+UINT CProcessMemoryEditorDlg::s_nSearchThreadNotifyMsg = 0;
+UINT CProcessMemoryEditorDlg::s_nHookEngineNotifyMsg = 0;
 
 CProcessMemoryEditorDlg::CProcessMemoryEditorDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(IDD_MUHACKER_DIALOG, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+    m_hFindBmp = (HBITMAP)LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDB_BITMAP1), IMAGE_BITMAP, 24, 24, LR_DEFAULTCOLOR);
+    m_hFindingBmp = (HBITMAP)LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDB_BITMAP2), IMAGE_BITMAP, 24, 24, LR_DEFAULTCOLOR);
+    m_hFindingCursor = AfxGetApp()->LoadCursor(IDC_CURSOR1);
+
     m_pSearchThread = nullptr;
     m_nTimerID = 0;
+    m_dwProcessId = 0;
+    m_pMouseHookEngine = nullptr;
+    m_pHookManager = nullptr;
+    m_eSeachKind = ESearch::eSearchNone;
+
+    CString strMsgId;
+    if (0 == s_nHookEngineNotifyMsg) {
+        strMsgId.Format(_T("%s::HookEngineNotifyMessage::%p::%ld"), AfxGetAppName(), AfxGetInstanceHandle(), GetCurrentThreadId());
+        s_nHookEngineNotifyMsg = RegisterWindowMessage(strMsgId);
+    }
+    if (0 == s_nSearchThreadNotifyMsg) {
+        strMsgId.Format(_T("%s::SearchThreadNotifyMessage::%p::%ld"), AfxGetAppName(), AfxGetInstanceHandle(), GetCurrentThreadId());
+        s_nSearchThreadNotifyMsg = RegisterWindowMessage(strMsgId);
+    }
+
+    m_hHookEngineDLL = LoadLibrary(_T("HookEngine.Dll"));
+    if (nullptr != m_hHookEngineDLL) {
+        GETHOOKMANAGER getHookManager = (GETHOOKMANAGER)GetProcAddress(m_hHookEngineDLL, GetHookManagerFunctionName);
+        if(nullptr != getHookManager) {
+            m_pHookManager = getHookManager();
+            if (nullptr != m_pHookManager) {
+                m_pMouseHookEngine =  CMouseHookEngine::createInstance(this, s_nHookEngineNotifyMsg);
+                if (nullptr != m_pMouseHookEngine) {
+                    m_pHookManager->registerEngine(m_pMouseHookEngine->Id(), m_pMouseHookEngine);
+                }
+            }
+        }
+    }
+
 }
 
 CProcessMemoryEditorDlg::~CProcessMemoryEditorDlg()
 {
+    if (nullptr != m_hHookEngineDLL) {
+        if (FreeLibrary(m_hHookEngineDLL)) {
+            m_hHookEngineDLL = nullptr;
+        }
+    }
+
     if (nullptr != m_pSearchThread) {
         delete m_pSearchThread;
         m_pSearchThread = nullptr;
@@ -37,7 +77,7 @@ void CProcessMemoryEditorDlg::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, IDC_BTN_BROWSE_PROCESS, m_btnBrowseProcess);
     DDX_Control(pDX, IDC_EDT_PROCESS_ID, m_edtProcessID);
     DDX_Control(pDX, IDC_BTN_SPAWN_PROCESSES, m_btnSpawnProcess);
-    DDX_Control(pDX, IDC_BTN_SEARCH, m_btnSearch);
+    DDX_Control(pDX, IDC_BTN_SEARCH, m_btnSearchWhole);
     DDX_Control(pDX, IDC_EDT_SEACH_VALUE, m_edtSearchValue);
     DDX_Control(pDX, IDC_LVW_RESULTS, m_lvwResults);
     DDX_Control(pDX, IDC_CB_DATA_TYPE, m_cboDataTypes);
@@ -48,6 +88,14 @@ void CProcessMemoryEditorDlg::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, IDC_BTN_SAVE, m_btnSaveData);
     DDX_Control(pDX, IDC_EDT_ADDRESS, m_edtMemoryAddr);
     DDX_Control(pDX, IDC_BTN_BROWSE_LAUNCH, m_btnLaunchProcess);
+    DDX_Control(pDX, IDC_BTN_SEARCH_IN_ADDRESSES, m_btnSearchInAddresses);
+    DDX_Control(pDX, IDC_BTN_READ, m_btnReadProcessMemory);
+    DDX_Control(pDX, IDC_EDT_DATA_LENGTH, m_edtDataLength);
+    DDX_Control(pDX, IDC_STT_FIND_PROCESS, m_sttProcessFromWnd);
+    DDX_Control(pDX, IDC_STT_STATUS_TEXT, m_sttStatusText);
+    DDX_Control(pDX, IDC_RAD_HEXA, m_radHexa);
+    DDX_Control(pDX, IDC_RAD_DECIMAL, m_radDecimal);
+    DDX_Control(pDX, IDC_BTN_STOP_SEARCH, m_btnStopSearch);
 }
 
 BEGIN_MESSAGE_MAP(CProcessMemoryEditorDlg, CDialogEx)
@@ -62,7 +110,6 @@ BEGIN_MESSAGE_MAP(CProcessMemoryEditorDlg, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_SEARCH, &CProcessMemoryEditorDlg::OnBnClickedBtnSearch)
     ON_EN_CHANGE(IDC_EDT_PROCESS_ID, &CProcessMemoryEditorDlg::OnEnChangeEdtProcessId)
     ON_EN_CHANGE(IDC_EDT_PROCESS_NAME, &CProcessMemoryEditorDlg::OnEnChangeEdtProcessName)
-    ON_REGISTERED_MESSAGE(CProcessMemoryEditorDlg::s_nCommunicateMessage, &CProcessMemoryEditorDlg::OnThreadMessage)
     ON_EN_CHANGE(IDC_EDT_SEACH_VALUE, &CProcessMemoryEditorDlg::OnEnChangeEdtSeachValue)
     ON_CBN_SELCHANGE(IDC_CB_DATA_TYPE, &CProcessMemoryEditorDlg::OnCbnSelchangeCbDataType)
     ON_NOTIFY(LVN_ITEMCHANGED, IDC_LVW_RESULTS, &CProcessMemoryEditorDlg::OnLvnItemchangedLvwResults)
@@ -70,6 +117,17 @@ BEGIN_MESSAGE_MAP(CProcessMemoryEditorDlg, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_SAVE, &CProcessMemoryEditorDlg::OnBnClickedBtnSave)
     ON_BN_CLICKED(IDC_BTN_BROWSE_LAUNCH, &CProcessMemoryEditorDlg::OnBnClickedBtnBrowseLaunch)
     ON_BN_CLICKED(IDC_CHB_TOPMOST, &CProcessMemoryEditorDlg::OnBnClickedChbTopmost)
+    ON_BN_CLICKED(IDC_BTN_SEARCH_IN_ADDRESSES, &CProcessMemoryEditorDlg::OnBnClickedBtnSearchInAddresses)
+    ON_NOTIFY(LVN_GETDISPINFO, IDC_LVW_RESULTS, &CProcessMemoryEditorDlg::OnLvnGetdispinfoLvwResults)
+    ON_EN_CHANGE(IDC_EDT_ADDRESS, &CProcessMemoryEditorDlg::OnEnChangeEdtAddress)
+    ON_BN_CLICKED(IDC_BTN_READ, &CProcessMemoryEditorDlg::OnBnClickedBtnRead)
+    //
+    ON_REGISTERED_MESSAGE(CProcessMemoryEditorDlg::s_nSearchThreadNotifyMsg, &CProcessMemoryEditorDlg::OnThreadMessage)
+    ON_REGISTERED_MESSAGE(CProcessMemoryEditorDlg::s_nHookEngineNotifyMsg, &CProcessMemoryEditorDlg::OnMouseHookEngineNotify)
+    ON_BN_CLICKED(IDC_RAD_HEXA, &CProcessMemoryEditorDlg::OnBnClickedRadHexa)
+    ON_BN_CLICKED(IDC_RAD_DECIMAL, &CProcessMemoryEditorDlg::OnBnClickedRadDecimal)
+    ON_BN_CLICKED(IDC_BTN_STOP_SEARCH, &CProcessMemoryEditorDlg::OnBnClickedBtnStopSearch)
+    ON_NOTIFY(NM_CUSTOMDRAW, IDC_PRGB_SEARCH, &CProcessMemoryEditorDlg::OnNMCustomdrawPrgbSearch)
 END_MESSAGE_MAP()
 
 
@@ -82,17 +140,15 @@ BOOL CProcessMemoryEditorDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE);			// Set big icon
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
-    CString strCommMsg;
-    strCommMsg.Format(_T("%s-%p-%ld"), AfxGetAppName(), AfxGetInstanceHandle(), GetCurrentThreadId());
-    CProcessMemoryEditorDlg::s_nCommunicateMessage = RegisterWindowMessage(strCommMsg);
+    CheckDlgButton(IDC_RAD_PROCESS_ID, BST_CHECKED);
+    OnBnClickedRadProcessId();
 
-    CheckDlgButton(IDC_RAD_PROCESS_NAME, BST_CHECKED);
     m_edtProcessName.SetLimitText(MAXINT);
     m_edtProcessID.SetLimitText(10);
 
     m_lvwResults.SetExtendedStyle(LVS_EX_GRIDLINES | LVS_EX_FULLROWSELECT | LVS_EX_INFOTIP);
     m_lvwResults.InsertColumn(0, _T("#"), LVCFMT_LEFT, 40);
-    m_lvwResults.InsertColumn(1, _T("Address"), LVCFMT_LEFT, 400);
+    m_lvwResults.InsertColumn(1, _T("Address"), LVCFMT_LEFT, 200);
 
     m_cboDataTypes.AddString(_T(" < Data type > "));
     m_cboDataTypes.AddString(_T("ANSI String"));
@@ -106,6 +162,12 @@ BOOL CProcessMemoryEditorDlg::OnInitDialog()
     m_cboDataTypes.AddString(_T("Double"));
 
     m_cboDataTypes.SetCurSel(0);
+    m_edtDataLength.SetLimitText(3);
+
+    m_sttProcessFromWnd.ModifyStyle(0, SS_BITMAP);
+    m_sttProcessFromWnd.SetBitmap(m_hFindBmp);
+
+    CheckDlgButton(IDC_RAD_DECIMAL, BST_CHECKED);
 
 	return TRUE;
 }
@@ -113,6 +175,22 @@ BOOL CProcessMemoryEditorDlg::OnInitDialog()
 
 void CProcessMemoryEditorDlg::OnDestroy()
 {
+    if (nullptr != m_pHookManager) {
+        if (nullptr != m_pMouseHookEngine) {
+            m_pHookManager->removeEngine(m_pMouseHookEngine->Id());
+            m_pMouseHookEngine->UnHook();
+            m_pMouseHookEngine->deleteInstance();
+            m_pMouseHookEngine = nullptr;
+        }
+    }
+
+    if (nullptr != m_hHookEngineDLL) {
+        if (FreeLibrary(m_hHookEngineDLL)) {
+            m_hHookEngineDLL = nullptr;
+            m_pHookManager = nullptr;
+        }
+    }
+
     if (0 != m_nTimerID) {
         KillTimer(m_nTimerID);
         m_nTimerID = 0;
@@ -144,6 +222,7 @@ void CProcessMemoryEditorDlg::OnPaint()
 		CDialogEx::OnPaint();
 	}
 }
+
 
 // The system calls this function to obtain the cursor to display while the user drags
 //  the minimized window.
@@ -202,10 +281,11 @@ void CProcessMemoryEditorDlg::OnBnClickedRadProcessName()
 {
     m_edtProcessName.EnableWindow(TRUE);
     m_btnBrowseProcess.EnableWindow(TRUE);
-
+    m_btnLaunchProcess.EnableWindow(m_edtProcessName.GetWindowTextLength()>0);
     m_edtProcessID.EnableWindow(FALSE);
     m_btnSpawnProcess.EnableWindow(FALSE);
     m_edtProcessID.SetWindowText(nullptr);
+    m_sttProcessFromWnd.EnableWindow(FALSE);
 }
 
 
@@ -213,9 +293,11 @@ void CProcessMemoryEditorDlg::OnBnClickedRadProcessId()
 {
     m_edtProcessName.EnableWindow(FALSE);
     m_btnBrowseProcess.EnableWindow(FALSE);
+    m_btnLaunchProcess.EnableWindow(FALSE);
 
     m_edtProcessID.EnableWindow(TRUE);
     m_btnSpawnProcess.EnableWindow(TRUE);
+    m_sttProcessFromWnd.EnableWindow(TRUE);
 }
 
 
@@ -239,7 +321,7 @@ BOOL CProcessMemoryEditorDlg::IsNumeric(LPCTSTR lpszString)
 
 void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
 {
-    if (nullptr==m_pSearchThread) { //Start search
+    if (nullptr == m_pSearchThread) { //Start search
         if (m_edtSearchValue.GetWindowTextLength() <= 0) {
             AfxMessageBox(_T("Search value is not inputed."));
             m_edtSearchValue.SetFocus();
@@ -285,7 +367,6 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
             delete m_pSearchThread;
         }
 
-        DWORD dwProcID = 0;
         CString strProcID;
         CStringA strProcIDA;
         m_edtProcessID.GetWindowText(strProcID);
@@ -295,8 +376,8 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
             return;
         }
         strProcIDA = strProcID;
-        dwProcID = static_cast<DWORD>(atol(strProcIDA));
-        if (0 == dwProcID) {
+        m_dwProcessId = static_cast<DWORD>(atol(strProcIDA));
+        if (0 == m_dwProcessId) {
             AfxMessageBox(_T("Invalid process ID."));
             m_edtProcessID.SetFocus();
             return;
@@ -310,7 +391,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
             CString strVal;
             m_edtSearchValue.GetWindowText(strVal);
             strValA = strVal;
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, (LPCSTR)strValA);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, (LPCSTR)strValA);
         }
         break;
         case EDataType::eUnicodeString:
@@ -319,35 +400,35 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
             CString strVal;
             m_edtSearchValue.GetWindowText(strVal);
             strValW = strVal;
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, (LPCWSTR)strValW);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, (LPCWSTR)strValW);
         }
         break;
         case  EDataType::eByte:
         {
             BYTE byval = static_cast<BYTE>(GetDlgItemInt(IDC_EDT_SEACH_VALUE));
             SetDlgItemInt(IDC_EDT_SEACH_VALUE, byval);
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, byval);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, byval);
         }
         break;
         case EDataType::eShort:
         {
             SHORT shVal = static_cast<SHORT>(GetDlgItemInt(IDC_EDT_SEACH_VALUE));
             SetDlgItemInt(IDC_EDT_SEACH_VALUE, shVal);
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, shVal);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, shVal);
         }
         break;
         case EDataType::eWord:
         {
             WORD wVal = static_cast<WORD>(GetDlgItemInt(IDC_EDT_SEACH_VALUE));
             SetDlgItemInt(IDC_EDT_SEACH_VALUE, wVal);
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, wVal);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, wVal);
         }
         break;
         case EDataType::eDoubleWord:
         {
             DWORD dwVal = static_cast<DWORD>(GetDlgItemInt(IDC_EDT_SEACH_VALUE));
             SetDlgItemInt(IDC_EDT_SEACH_VALUE, dwVal);
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, dwVal);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, dwVal);
         }
         break;
         case EDataType::eQuartWord:
@@ -358,7 +439,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
             CString strTemp;
             strTemp.Format(_T("%I64d"), qwVal);
             m_edtSearchValue.SetWindowText(strTemp);
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, qwVal);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, qwVal);
         }
         break;
         case  EDataType::eFloat:
@@ -369,7 +450,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
             CString strTemp;
             strTemp.Format(_T("%f"), fVal);
             m_edtSearchValue.SetWindowText(strTemp);
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, fVal);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, fVal);
         }
         break;
         case EDataType::eDouble:
@@ -380,7 +461,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
             CString strTemp;
             strTemp.Format(_T("%lf"), dblVal);
             m_edtSearchValue.SetWindowText(strTemp);
-            m_pSearchThread = new CSearchThread(this, s_nCommunicateMessage, dwProcID, dblVal);
+            m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, dblVal);
         }
         break;
         
@@ -396,19 +477,9 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
                 return;
             }
         }
-    }
-    else { //Stop search
-        if (nullptr != m_pSearchThread) {
-            m_pSearchThread->SuspendThread();
-            int nConfirm = MessageBox(_T("Are you sure to abort current operation?"), _T("Confirmation"), MB_YESNO | MB_OK);
-            m_pSearchThread->ResumeThread();
-            if (IDYES == nConfirm) {
-                m_pSearchThread->Stop();
-            }
-            else {
-                return;
-            }
-        }
+
+        m_eSeachKind = ESearch::eSearchWhole;
+        m_btnSearchWhole.EnableWindow(FALSE);
     }
 }
 
@@ -417,7 +488,8 @@ void CProcessMemoryEditorDlg::OnEnChangeEdtProcessId()
 {
     m_lvwResults.DeleteAllItems();
     OnListResultItemChanged();
-    m_btnSearch.EnableWindow(m_edtProcessID.GetWindowTextLength() > 0);
+    m_btnSearchWhole.EnableWindow((m_edtProcessID.GetWindowTextLength() > 0) && (m_edtSearchValue.GetWindowTextLength() > 0));
+    m_btnReadProcessMemory.EnableWindow((m_edtMemoryAddr.GetWindowTextLength() > 0) && (m_edtProcessID.GetWindowTextLength() > 0));
 }
 
 
@@ -426,7 +498,7 @@ void CProcessMemoryEditorDlg::OnEnChangeEdtProcessName()
     m_lvwResults.DeleteAllItems();
     OnListResultItemChanged();
     m_btnLaunchProcess.EnableWindow(m_edtProcessName.GetWindowTextLength() > 0);
-    m_btnSearch.EnableWindow(m_edtProcessID.GetWindowTextLength() > 0);
+    m_btnSearchWhole.EnableWindow(m_edtProcessID.GetWindowTextLength() > 0);
 }
 
 
@@ -440,6 +512,7 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
     case EThreadNotifyCode::eStart:
     {
         m_lvwResults.DeleteAllItems();
+        m_arrMatchAddress.RemoveAll();
         OnListResultItemChanged();
 
         EnableWindows(m_radProcName.GetSafeHwnd(), FALSE);
@@ -450,11 +523,24 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
         EnableWindows(m_btnSpawnProcess.GetSafeHwnd(), FALSE);
         EnableWindows(m_edtSearchValue.GetSafeHwnd(), FALSE);
         EnableWindows(m_cboDataTypes.GetSafeHwnd(), FALSE);
+        EnableWindows(m_btnSearchInAddresses.GetSafeHwnd(), FALSE);
+        EnableWindows(m_sttProcessFromWnd.GetSafeHwnd(), FALSE);
+        EnableWindows(m_radHexa.GetSafeHwnd(), FALSE);
+        EnableWindows(m_radDecimal.GetSafeHwnd(), FALSE);
+        EnableWindows(m_edtMemoryAddr.GetSafeHwnd(), FALSE);
+        EnableWindows(m_edtMemoryData.GetSafeHwnd(), FALSE);
+        EnableWindows(m_lvwResults.GetSafeHwnd(), FALSE);
 
-        m_btnSearch.SetWindowText(_T("St&op"));
+        m_btnStopSearch.EnableWindow(TRUE);
 
+        m_prgbSearch.ModifyStyle(0, PBS_MARQUEE);
         m_prgbSearch.SetPos(0);
         m_prgbSearch.ShowWindow(SW_SHOW);
+
+        CString strStatus;
+        strStatus = _T("Total: 0 matched addresses");
+        m_sttStatusText.SetWindowText(strStatus);
+        m_sttStatusText.ShowWindow(SW_HIDE);
 
         m_nTimerID = SetTimer(12345, 10, nullptr);
     }
@@ -471,26 +557,105 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
         RestoreWindowsEnable(m_btnSpawnProcess.GetSafeHwnd());
         RestoreWindowsEnable(m_edtSearchValue.GetSafeHwnd());
         RestoreWindowsEnable(m_cboDataTypes.GetSafeHwnd());
+        RestoreWindowsEnable(m_btnSearchInAddresses.GetSafeHwnd());
+        RestoreWindowsEnable(m_sttProcessFromWnd.GetSafeHwnd());
+        RestoreWindowsEnable(m_radHexa.GetSafeHwnd());
+        RestoreWindowsEnable(m_radDecimal.GetSafeHwnd());
+        RestoreWindowsEnable(m_lvwResults.GetSafeHwnd());
+        RestoreWindowsEnable(m_edtMemoryData.GetSafeHwnd());
+        RestoreWindowsEnable(m_edtMemoryAddr.GetSafeHwnd());
 
-        m_btnSearch.SetWindowText(_T("&Search"));
+        m_btnSearchInAddresses.EnableWindow(m_lvwResults.GetItemCount() > 0);
+
+        m_btnStopSearch.EnableWindow(FALSE);
+
         m_prgbSearch.SetPos(0);
         m_prgbSearch.ShowWindow(SW_HIDE);
+        m_sttStatusText.ShowWindow(SW_SHOW);
+
+        EThreadExitCode nError = EThreadExitCode::eSuccess;
+
+        if (nullptr != m_pSearchThread) {
+            nError = static_cast<EThreadExitCode>( m_pSearchThread->ExitCode() );
+        }
+
+        m_lvwResults.SetItemCount(m_arrMatchAddress.GetCount());
+        m_lvwResults.RedrawItems(0, m_arrMatchAddress.GetCount() - 1);
+
+        switch (nError)
+        {
+        case EThreadExitCode::eSuccess:
+        {
+            MessageBox(_T("Search completed."), AfxGetAppName(), MB_ICONINFORMATION);
+        }
+        break;
+        case  EThreadExitCode::eUserAborted:
+        {
+            //Do nothing
+        }
+        break;
+        default:
+            MessageBox(_T("Search was finished with error."), AfxGetAppName(), MB_ICONWARNING);
+            break;
+        }
+
+        switch (m_eSeachKind)
+        {
+        case ESearch::eSearchWhole:
+        {
+            m_btnSearchWhole.EnableWindow(TRUE);
+        }
+        break;
+        case ESearch::wSearchSpecifiedAddress:
+        {
+            m_btnSearchInAddresses.EnableWindow(TRUE);
+        }
+        break;
+        default:
+            break;
+        }
 
         if (nullptr != m_pSearchThread) {
             delete m_pSearchThread;
             m_pSearchThread = nullptr;
         }
+        m_eSeachKind = ESearch::eSearchNone;
     }
     break;
     case  EThreadNotifyCode::eData:
     {
+        CString strItemCount;
         DWORD_PTR ptrAddress = (DWORD_PTR)lParam;
-        CString strAddress;
+        m_arrMatchAddress.Add(LPVOID(ptrAddress));
+        INT_PTR nCount = m_arrMatchAddress.GetCount();
 
-        strAddress.Format(_T("%d"), m_lvwResults.GetItemCount() + 1);
-        int nItem = m_lvwResults.InsertItem(m_lvwResults.GetItemCount(), strAddress);
-        strAddress.Format(_T("0x%p"), ptrAddress);
-        m_lvwResults.SetItemText(nItem, 1, strAddress);
+        strItemCount.Format(_T("Total: %ld matched addresses"), nCount);
+        m_sttStatusText.SetWindowText(strItemCount);
+
+        //m_lvwResults.SetItemCount(nCount);
+    }
+    break;
+    case EThreadNotifyCode::eProgressRange:
+    {
+        int nMin = (int)LOWORD(lParam);
+        int nMax = (int)HIWORD(lParam);
+        if (m_prgbSearch.GetSafeHwnd()) {
+            m_prgbSearch.SetRange32(nMin, nMax);
+            m_prgbSearch.SetPos(nMin);
+            m_prgbSearch.ModifyStyle(PBS_MARQUEE, 0);
+        }
+        if (0 != m_nTimerID) {
+            KillTimer(m_nTimerID);
+            m_nTimerID = 0;
+        }
+    }
+    break;
+    case  EThreadNotifyCode::eProgressValue:
+    {
+        int nPos = (int)lParam;
+        if (m_prgbSearch.GetSafeHwnd()) {
+            m_prgbSearch.SetPos(nPos);
+        }
     }
     break;
     default:
@@ -515,6 +680,12 @@ void CProcessMemoryEditorDlg::OnEnChangeEdtSeachValue()
 {
     m_lvwResults.DeleteAllItems();
     OnListResultItemChanged();
+
+    m_btnSearchWhole.EnableWindow((m_edtProcessID.GetWindowTextLength() > 0) && (m_edtSearchValue.GetWindowTextLength() > 0));
+
+    if ((m_cboDataTypes.GetCurSel() == (int)EDataType::eANSIString) || (m_cboDataTypes.GetCurSel() == (int)EDataType::eUnicodeString)) {
+        SetDlgItemInt(IDC_EDT_DATA_LENGTH, m_edtSearchValue.GetWindowTextLength());
+    }
 }
 
 
@@ -522,6 +693,42 @@ void CProcessMemoryEditorDlg::OnCbnSelchangeCbDataType()
 {
     m_lvwResults.DeleteAllItems();
     OnListResultItemChanged();
+    SetDlgItemInt(IDC_EDT_DATA_LENGTH, 0);
+    m_edtDataLength.SetReadOnly(TRUE);
+    int nSel = m_cboDataTypes.GetCurSel();
+    if (CB_ERR != nSel) {
+        switch ( static_cast<EDataType>(nSel))
+        {
+        case EDataType::eANSIString:
+        case EDataType::eUnicodeString:
+            SetDlgItemInt(IDC_EDT_DATA_LENGTH, m_edtSearchValue.GetWindowTextLength());
+            m_edtDataLength.SetReadOnly(FALSE);
+            break;
+        case EDataType::eByte:
+            SetDlgItemInt(IDC_EDT_DATA_LENGTH, 1);
+            break;
+        case EDataType::eWord:
+            SetDlgItemInt(IDC_EDT_DATA_LENGTH, sizeof(WORD));
+            break;
+        case EDataType::eShort:
+            SetDlgItemInt(IDC_EDT_DATA_LENGTH, sizeof(short));
+            break;
+        case EDataType::eDoubleWord:
+            SetDlgItemInt(IDC_EDT_DATA_LENGTH, sizeof(DWORD));
+            break;
+        case EDataType::eQuartWord:
+            SetDlgItemInt(IDC_EDT_DATA_LENGTH, sizeof(QWORD));
+            break;
+        case EDataType::eFloat:
+            SetDlgItemInt(IDC_EDT_DATA_LENGTH, sizeof(float));
+            break;
+        case EDataType::eDouble:
+            SetDlgItemInt(IDC_EDT_DATA_LENGTH, sizeof(double));
+            break;
+        default:
+            break;
+        }
+    }
 }
 
 
@@ -541,6 +748,7 @@ void CProcessMemoryEditorDlg::OnListResultItemChanged()
     m_btnSaveData.EnableWindow(FALSE);
 
     if (0 >= m_lvwResults.GetItemCount()) {
+        m_arrMatchAddress.RemoveAll();
         return;
     }
 
@@ -556,7 +764,14 @@ void CProcessMemoryEditorDlg::OnListResultItemChanged()
 
     CString strAddress;
     CString strData;
-    strAddress = m_lvwResults.GetItemText(nIndex, 1);
+
+    if (IsDlgButtonChecked(IDC_RAD_HEXA)) {
+        strAddress.Format(_T("0x%p"), m_arrMatchAddress.GetAt(nIndex));
+    }
+    else  if (IsDlgButtonChecked(IDC_RAD_DECIMAL)) {
+        strAddress.Format(_T("%ld"), reinterpret_cast<DWORD_PTR>(m_arrMatchAddress.GetAt(nIndex)));
+    }
+
     m_edtMemoryAddr.SetWindowText(strAddress);
     m_edtSearchValue.GetWindowText(strData);
     m_edtMemoryData.SetWindowText(strData);
@@ -565,11 +780,150 @@ void CProcessMemoryEditorDlg::OnListResultItemChanged()
 void CProcessMemoryEditorDlg::OnEnChangeEdtData()
 {
     m_btnSaveData.EnableWindow(TRUE);
+    m_btnSearchInAddresses.EnableWindow(m_edtMemoryData.GetWindowTextLength() > 0);
 }
 
 
 void CProcessMemoryEditorDlg::OnBnClickedBtnSave()
 {
+    CString strAddress;
+    m_edtMemoryAddr.GetWindowText(strAddress);
+    if (strAddress.IsEmpty()) {
+        AfxMessageBox(_T("Please input memory address!"));
+        m_edtMemoryAddr.SetFocus();
+        return;
+    }
+
+    CString strProcID;
+    CStringA strProcIDA;
+    m_edtProcessID.GetWindowText(strProcID);
+    if (strProcID.IsEmpty()) {
+        AfxMessageBox(_T("Invalid process ID."));
+        m_edtProcessID.SetFocus();
+        return;
+    }
+    strProcIDA = strProcID;
+    m_dwProcessId = static_cast<DWORD>(atol(strProcIDA));
+    if (0 == m_dwProcessId) {
+        AfxMessageBox(_T("Invalid process ID."));
+        m_edtProcessID.SetFocus();
+        return;
+    }
+
+    int nDataSize = GetDlgItemInt(IDC_EDT_DATA_LENGTH);
+    switch (static_cast<EDataType>(m_cboDataTypes.GetCurSel()))
+    {
+    case EDataType::eUnicodeString:
+    case EDataType::eANSIString:
+        nDataSize *= sizeof(TCHAR);
+        break;
+    default:
+        break;
+    }
+
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_dwProcessId);
+    if (nullptr == hProcess) {
+        AfxMessageBox(_T("Cannot open process."));
+        return;
+    }
+
+    BYTE* pBuffer = new BYTE[nDataSize + 1];
+    ZeroMemory(pBuffer, nDataSize + 1);
+    SIZE_T nByteWriten = 0;
+    LPVOID addr = nullptr;
+
+    if (IsDlgButtonChecked(IDC_RAD_HEXA)) {
+
+    }
+    else if (IsDlgButtonChecked(IDC_RAD_DECIMAL)) {
+        CStringA strAddressA;
+        strAddressA = strAddress;
+        LONGLONG lAddress = atoll(strAddressA);
+        addr = reinterpret_cast<LPVOID>(lAddress);
+    }
+
+    switch (static_cast<EDataType>(m_cboDataTypes.GetCurSel()))
+    {
+    case EDataType::eByte:
+    {
+        BYTE by = (BYTE)GetDlgItemInt(IDC_EDT_DATA);
+        CopyMemory(pBuffer, &by, nDataSize);
+    }
+    break;
+    case EDataType::eShort:
+    {
+        SHORT sh = (SHORT)GetDlgItemInt(IDC_EDT_DATA);
+        CopyMemory(pBuffer, &sh, nDataSize);
+    }
+    break;
+    case EDataType::eWord:
+    {
+        WORD w = (WORD)GetDlgItemInt(IDC_EDT_DATA);
+        CopyMemory(pBuffer, &w, nDataSize);
+    }
+    break;
+    case EDataType::eDoubleWord:
+    {
+        DWORD dw = 0;
+        CString strDw;
+        m_edtMemoryData.GetWindowText(strDw);
+        dw = (DWORD)_tstoll(strDw);
+        CopyMemory(pBuffer, &dw, nDataSize);
+    }
+    break;
+    case EDataType::eQuartWord:
+    {
+        DWORD qw = 0;
+        CString strQw;
+        m_edtMemoryData.GetWindowText(strQw);
+        qw = (DWORD)_tstoll(strQw);
+        CopyMemory(pBuffer, &qw, nDataSize);
+    }
+    break;
+    case EDataType::eFloat:
+    {
+        float f = 0;
+        CString strQw;
+        m_edtMemoryData.GetWindowText(strQw);
+        f = (float)_tstoll(strQw);
+        CopyMemory(pBuffer, &f, nDataSize);
+    }
+    break;
+    case EDataType::eDouble:
+    {
+        double dbl = 0;
+        CString strDbl;
+        m_edtMemoryData.GetWindowText(strDbl);
+        dbl = (float)_tstoll(strDbl);
+        CopyMemory(pBuffer, &dbl, nDataSize);
+    }
+    break;
+    case EDataType::eANSIString:
+    {
+        CStringA strA;
+        CopyMemory(strA.GetBuffer(nDataSize / sizeof(CHAR)), pBuffer, nDataSize);
+        strA.ReleaseBuffer();
+        m_edtMemoryData.SetWindowTextW(CString(strA));
+    }
+    break;
+    case EDataType::eUnicodeString:
+    {
+        CStringW strW;
+        CopyMemory(strW.GetBuffer(nDataSize / sizeof(WCHAR)), pBuffer, nDataSize);
+        strW.ReleaseBuffer();
+        m_edtMemoryData.SetWindowTextW(CString(strW));
+    }
+    break;
+    default:
+        break;
+    }
+
+    if (WriteProcessMemory(hProcess, addr, pBuffer, nDataSize, &nByteWriten)) {
+        m_btnSaveData.EnableWindow(FALSE);
+    }
+    delete[] pBuffer;
+    pBuffer = nullptr;
+    CloseHandle(hProcess);
     //
     m_btnSaveData.EnableWindow(FALSE);
 }
@@ -579,6 +933,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnBrowseLaunch()
 {
     //
     CString strProcName;
+    CString strCurDir;
     STARTUPINFO si = { 0 };
     PROCESS_INFORMATION pi = { 0 };
 
@@ -586,7 +941,14 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnBrowseLaunch()
     si.wShowWindow = SW_SHOWNORMAL;
     
     m_edtProcessName.GetWindowText(strProcName);
-    if (!CreateProcess(nullptr, strProcName.GetBuffer(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+    GetCurrentDirectory(MAX_PATH - 1, strCurDir.GetBuffer(_MAX_PATH));
+    strCurDir.ReleaseBuffer();
+    int nBackSlash = strProcName.Find('\\');
+    if (nBackSlash) {
+        strCurDir = strProcName.Left(nBackSlash);
+    }
+
+    if (!CreateProcess(nullptr, strProcName.GetBuffer(), nullptr, nullptr, FALSE, 0, nullptr, (LPCTSTR)strCurDir, &si, &pi)) {
         strProcName.ReleaseBuffer();
         AfxMessageBox(_T("Cannot launch process."));
         return;
@@ -600,7 +962,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnBrowseLaunch()
     WaitForSingleObject(pi.hProcess, 100);
     m_edtProcessID.SetWindowText(strProcName);
     m_btnLaunchProcess.EnableWindow(FALSE);
-    m_btnSearch.EnableWindow(m_edtProcessID.GetWindowTextLength() > 0);
+    m_btnSearchWhole.EnableWindow(m_edtProcessID.GetWindowTextLength() > 0);
 }
 
 
@@ -613,4 +975,450 @@ void CProcessMemoryEditorDlg::OnBnClickedChbTopmost()
     else {
         SetWindowPos(&wndNoTopMost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOREDRAW);
     }
+}
+
+
+void CProcessMemoryEditorDlg::OnBnClickedBtnSearchInAddresses()
+{
+    // TODO: Add your control notification handler code here
+    CString strVal;
+    m_edtMemoryData.GetWindowText(strVal);
+    if (0 >= strVal.GetLength()) {
+        AfxMessageBox(_T("Search data cannot be empty."));
+        m_edtMemoryData.SetFocus();
+        return;
+    }
+
+    int nSel = m_cboDataTypes.GetCurSel();
+    if (CB_ERR == nSel) {
+        AfxMessageBox(_T("Please select a data type."));
+        m_cboDataTypes.SetFocus();
+        m_cboDataTypes.ShowDropDown(TRUE);
+        return;
+    }
+
+    EDataType  eType = static_cast<EDataType>(nSel);
+    switch (eType)
+    {
+    case EDataType::eByte:
+    case EDataType::eShort:
+    case EDataType::eWord:
+    case EDataType::eDoubleWord:
+    case EDataType::eQuartWord:
+    case EDataType::eFloat:
+    case EDataType::eDouble:
+        if (!IsNumeric(strVal)) {
+            AfxMessageBox(_T("Search value is invalid numeric value."));
+            m_edtSearchValue.SetFocus();
+            return;
+        }
+        break;
+    case EDataType::eUnknow:
+        nSel = CB_ERR;
+        break;
+    default:
+        break;
+    }
+
+    if (nullptr != m_pSearchThread) {
+        delete m_pSearchThread;
+        m_pSearchThread = nullptr;
+    }
+
+    switch (eType)
+    {
+    case  EDataType::eANSIString:
+    {
+        CStringA strValA;
+        CString strVal;
+        m_edtMemoryData.GetWindowText(strVal);
+        strValA = strVal;
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, (LPCSTR)strValA, &m_arrMatchAddress);
+    }
+    break;
+    case EDataType::eUnicodeString:
+    {
+        CStringW strValW;
+        CString strVal;
+        m_edtMemoryData.GetWindowText(strVal);
+        strValW = strVal;
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, (LPCWSTR)strValW, &m_arrMatchAddress);
+    }
+    break;
+    case  EDataType::eByte:
+    {
+        BYTE byval = static_cast<BYTE>(GetDlgItemInt(IDC_EDT_DATA));
+        SetDlgItemInt(IDC_EDT_DATA, byval);
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, byval, &m_arrMatchAddress);
+    }
+    break;
+    case EDataType::eShort:
+    {
+        SHORT shVal = static_cast<SHORT>(GetDlgItemInt(IDC_EDT_DATA));
+        SetDlgItemInt(IDC_EDT_DATA, shVal);
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, shVal, &m_arrMatchAddress);
+    }
+    break;
+    case EDataType::eWord:
+    {
+        WORD wVal = static_cast<WORD>(GetDlgItemInt(IDC_EDT_DATA));
+        SetDlgItemInt(IDC_EDT_DATA, wVal);
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, wVal, &m_arrMatchAddress);
+    }
+    break;
+    case EDataType::eDoubleWord:
+    {
+        DWORD dwVal = static_cast<DWORD>(GetDlgItemInt(IDC_EDT_DATA));
+        SetDlgItemInt(IDC_EDT_DATA, dwVal);
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, dwVal, &m_arrMatchAddress);
+    }
+    break;
+    case EDataType::eQuartWord:
+    {
+        CStringA strValA;
+        strValA = strVal;
+        QWORD qwVal = static_cast<QWORD>(atoll(strValA));
+        CString strTemp;
+        strTemp.Format(_T("%I64d"), qwVal);
+        m_edtMemoryData.SetWindowText(strTemp);
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, qwVal, &m_arrMatchAddress);
+    }
+    break;
+    case  EDataType::eFloat:
+    {
+        CStringA strValA;
+        strValA = strVal;
+        FLOAT fVal = static_cast<FLOAT>(atof(strValA));
+        CString strTemp;
+        strTemp.Format(_T("%f"), fVal);
+        m_edtMemoryData.SetWindowText(strTemp);
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, fVal, &m_arrMatchAddress);
+    }
+    break;
+    case EDataType::eDouble:
+    {
+        CStringA strValA;
+        strValA = strVal;
+        DOUBLE dblVal = static_cast<DOUBLE>(atof(strValA));
+        CString strTemp;
+        strTemp.Format(_T("%lf"), dblVal);
+        m_edtMemoryData.SetWindowText(strTemp);
+        m_pSearchThread = new CMemorySearchThread(this, s_nSearchThreadNotifyMsg, m_dwProcessId, dblVal, &m_arrMatchAddress);
+    }
+    break;
+    default:
+        break;
+    }
+
+    if (nullptr != m_pSearchThread) {
+        if (!m_pSearchThread->CreateThread()) {
+            MessageBox(_T("Cannot execute searching."), _T("Internal Error"), MB_ICONERROR);
+            delete m_pSearchThread;
+            m_pSearchThread = nullptr;
+            return;
+        }
+    }
+
+    m_eSeachKind = ESearch::wSearchSpecifiedAddress;
+    m_btnSearchInAddresses.EnableWindow(FALSE);
+}
+
+
+void CProcessMemoryEditorDlg::OnLvnGetdispinfoLvwResults(NMHDR *pNMHDR, LRESULT *pResult)
+{
+    NMLVDISPINFO *pDispInfo = reinterpret_cast<NMLVDISPINFO*>(pNMHDR);
+    // TODO: Add your control notification handler code here
+    *pResult = 0;
+
+    if ((NULL == pDispInfo) || (0 >= m_arrMatchAddress.GetCount())) {
+        return;
+    }
+
+    if ((nullptr != m_pSearchThread) && (!m_pSearchThread->IsStopped())) {
+        return;
+    }
+
+    if (pDispInfo->item.mask & LVIF_TEXT) {
+        if (0 == pDispInfo->item.iSubItem) {
+            CString strNo;
+            strNo.Format(_T("%d"), pDispInfo->item.iItem + 1);
+            _tcscpy_s(pDispInfo->item.pszText, pDispInfo->item.cchTextMax, (LPCTSTR)strNo);
+        }
+        else if (1 == pDispInfo->item.iSubItem) {
+            LPVOID lpAddr = m_arrMatchAddress[pDispInfo->item.iItem];
+            CString strAddr;
+            strAddr.Format(_T("0x%p"), lpAddr);
+            _tcscpy_s(pDispInfo->item.pszText, pDispInfo->item.cchTextMax, (LPCTSTR)strAddr);
+        }
+    }
+}
+
+
+void CProcessMemoryEditorDlg::OnEnChangeEdtAddress()
+{
+    m_btnReadProcessMemory.EnableWindow((m_edtMemoryAddr.GetWindowTextLength() > 0) && (m_edtProcessID.GetWindowTextLength() > 0));
+}
+
+
+void CProcessMemoryEditorDlg::OnBnClickedBtnRead()
+{
+    CString strAddress;
+    m_edtMemoryAddr.GetWindowText(strAddress);
+    if (strAddress.IsEmpty()) {
+        AfxMessageBox(_T("Please input memory address!"));
+        m_edtMemoryAddr.SetFocus();
+        return;
+    }
+
+    CString strProcID;
+    CStringA strProcIDA;
+    m_edtProcessID.GetWindowText(strProcID);
+    if (strProcID.IsEmpty()) {
+        AfxMessageBox(_T("Invalid process ID."));
+        m_edtProcessID.SetFocus();
+        return;
+    }
+    strProcIDA = strProcID;
+    m_dwProcessId = static_cast<DWORD>(atol(strProcIDA));
+    if (0 == m_dwProcessId) {
+        AfxMessageBox(_T("Invalid process ID."));
+        m_edtProcessID.SetFocus();
+        return;
+    }
+
+    int nDataSize = GetDlgItemInt(IDC_EDT_DATA_LENGTH);
+    switch (static_cast<EDataType>(m_cboDataTypes.GetCurSel()))
+    {
+    case EDataType::eUnicodeString:
+    case EDataType::eANSIString:
+        nDataSize *= sizeof(TCHAR);
+        break;
+    default:
+        break;
+    }
+
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_dwProcessId);
+    if (nullptr == hProcess) {
+        AfxMessageBox(_T("Cannot open process."));
+        return;
+    }
+
+    BYTE* pBuffer = new BYTE[nDataSize + 1];
+    ZeroMemory(pBuffer, nDataSize + 1);
+    SIZE_T nByteRead = 0;
+    LPCVOID addr = nullptr;
+
+    if (IsDlgButtonChecked(IDC_RAD_HEXA)) {
+
+    }
+    else if(IsDlgButtonChecked(IDC_RAD_DECIMAL) ){
+        CStringA strAddressA;
+        strAddressA = strAddress;
+        LONGLONG lAddress = atoll(strAddressA);
+        addr = reinterpret_cast<LPVOID>(lAddress);
+    }
+
+    SetDlgItemInt(IDC_EDT_DATA, 0);
+
+    if (ReadProcessMemory(hProcess, addr, pBuffer, nDataSize, &nByteRead)) {
+        switch (static_cast<EDataType>(m_cboDataTypes.GetCurSel()))
+        {
+        case EDataType::eByte:
+            SetDlgItemInt(IDC_EDT_DATA, (UINT)pBuffer[0]);
+            break;
+        case EDataType::eShort:
+        {
+            SHORT sh = 0;
+            CopyMemory(&sh, pBuffer, sizeof(SHORT));
+            SetDlgItemInt(IDC_EDT_DATA, sh);
+        }
+        break;
+        case EDataType::eWord:
+        {
+            WORD w = 0;
+            CopyMemory(&w, pBuffer, sizeof(WORD));
+            SetDlgItemInt(IDC_EDT_DATA, w);
+        }
+        break;
+        case EDataType::eDoubleWord:
+        {
+            DWORD dw = 0;
+            CopyMemory(&dw, pBuffer, sizeof(DWORD));
+            CString strDw;
+            strDw.Format(_T("%ld"), dw);
+            m_edtMemoryData.SetWindowText(strDw);
+        }
+        break;
+        case EDataType::eQuartWord:
+        {
+            QWORD qw = 0;
+            CopyMemory(&qw, pBuffer, sizeof(QWORD));
+            CString strQw;
+            strQw.Format(_T("%I64d"), qw);
+            m_edtMemoryData.SetWindowText(strQw);
+        }
+        break;
+        case EDataType::eFloat:
+        {
+            float f = 0;
+            CopyMemory(&f, pBuffer, sizeof(float));
+            CString strF;
+            strF.Format(_T("%f"), f);
+            m_edtMemoryData.SetWindowText(strF);
+        }
+        break;
+        case EDataType::eDouble:
+        {
+            double d = 0;
+            CopyMemory(&d, pBuffer, sizeof(double));
+            CString strD;
+            strD.Format(_T("%lf"), d);
+            m_edtMemoryData.SetWindowText(strD);
+        }
+        break;
+        case EDataType::eANSIString:
+        {
+            CStringA strA;
+            CopyMemory(strA.GetBuffer(nDataSize / sizeof(CHAR)), pBuffer, nDataSize);
+            strA.ReleaseBuffer();
+            m_edtMemoryData.SetWindowTextW(CString(strA));
+        }
+        break;
+        case EDataType::eUnicodeString:
+        {
+            CStringW strW;
+            CopyMemory(strW.GetBuffer(nDataSize / sizeof(WCHAR)), pBuffer, nDataSize);
+            strW.ReleaseBuffer();
+            m_edtMemoryData.SetWindowTextW(CString(strW));
+        }
+        break;
+        default:
+            break;
+        }
+    }
+    delete[] pBuffer;
+    pBuffer = nullptr;
+    CloseHandle(hProcess);
+}
+
+
+BOOL CProcessMemoryEditorDlg::PreTranslateMessage(MSG* lpMsg)
+{
+    if (nullptr == lpMsg) {
+        return CDialogEx::PreTranslateMessage(lpMsg);
+    }
+
+    if (WM_LBUTTONDOWN == lpMsg->message) {
+        if (lpMsg->hwnd == m_sttProcessFromWnd.GetSafeHwnd()) {
+            //Start hook procedure
+            m_sttProcessFromWnd.SetBitmap(m_hFindingBmp);
+            m_hPrevCursor = ::SetCursor(m_hFindingCursor);
+            
+            if (nullptr != m_hHookEngineDLL) {
+                HOOKPROC MouseProc = (HOOKPROC)GetProcAddress(m_hHookEngineDLL, LowlevelMouseProcName);
+                if ((nullptr != MouseProcName) && (nullptr != m_pMouseHookEngine)) {
+                    m_pMouseHookEngine->Hook(MouseProc, m_hHookEngineDLL, 0);
+                    SetCapture();
+                }
+            }
+        }
+    }
+
+    else if (WM_KEYDOWN == lpMsg->message) {
+        if (VK_RETURN == lpMsg->wParam) {
+            return TRUE;
+        }
+
+        else if (VK_ESCAPE == lpMsg->wParam) {
+            return TRUE;
+        }
+    }
+
+    return CDialogEx::PreTranslateMessage(lpMsg);
+}
+
+BOOL CProcessMemoryEditorDlg::IsMyWindowFamily(CWnd * pWnd)
+{
+    if (nullptr == pWnd) {
+        return FALSE;
+    }
+
+    CWnd* pParent = pWnd;
+    CWnd* pDesktop = GetDesktopWindow();
+    while (nullptr!=pParent)
+    {
+        if (pParent == pDesktop) {
+            break;
+        }
+        if (pParent == this) {
+            return TRUE;
+        }
+        pParent = pParent->GetParent();
+    }
+    return FALSE;
+}
+
+LRESULT CProcessMemoryEditorDlg::OnMouseHookEngineNotify(WPARAM wParam, LPARAM lParam)
+{
+    MSLLHOOKSTRUCT ms = { 0 };
+    CopyMemory(&ms, (MSLLHOOKSTRUCT*)lParam, sizeof(MSLLHOOKSTRUCT));
+    if (WM_LBUTTONUP == wParam) {
+        //Release hook
+        if (nullptr != m_pMouseHookEngine) {
+            ReleaseCapture();
+            m_pMouseHookEngine->UnHook();
+            m_sttProcessFromWnd.SetBitmap(m_hFindBmp);
+            ::SetCursor(m_hPrevCursor);
+        }
+    }
+
+    else if (WM_MOUSEMOVE == wParam) {
+        CPoint pt = ms.pt;
+        CWnd* pWndFromPt = WindowFromPoint(pt);
+        if (nullptr != pWndFromPt) {
+            if (!IsMyWindowFamily(pWndFromPt)) {
+                DWORD dwProcessId = 0;
+                DWORD dwThreadId = GetWindowThreadProcessId(pWndFromPt->GetSafeHwnd(), &dwProcessId);
+                SetDlgItemInt(IDC_EDT_PROCESS_ID, dwProcessId);
+            }
+        }
+    }
+
+    return 0L;
+}
+
+
+void CProcessMemoryEditorDlg::OnBnClickedRadHexa()
+{
+    OnListResultItemChanged();
+}
+
+
+void CProcessMemoryEditorDlg::OnBnClickedRadDecimal()
+{
+    OnListResultItemChanged();
+}
+
+
+void CProcessMemoryEditorDlg::OnBnClickedBtnStopSearch()
+{
+    if (nullptr != m_pSearchThread) {
+        m_pSearchThread->SuspendThread();
+        int nConfirm = MessageBox(_T("Are you sure to abort current operation?"), _T("Confirmation"), MB_YESNO | MB_OK);
+        m_pSearchThread->ResumeThread();
+        if (IDYES == nConfirm) {
+            m_pSearchThread->Stop();
+        }
+        else {
+            return;
+        }
+    }
+}
+
+
+void CProcessMemoryEditorDlg::OnNMCustomdrawPrgbSearch(NMHDR *pNMHDR, LRESULT *pResult)
+{
+    LPNMCUSTOMDRAW pNMCD = reinterpret_cast<LPNMCUSTOMDRAW>(pNMHDR);
+    // TODO: Add your control notification handler code here
+    *pResult = 0;
 }

@@ -1,0 +1,8 @@
+LIBRARY
+EXPORTS
+getHookManager          @1
+MouseProc               @2
+LowlevelMouseProc       @3
+KeyboardProc            @4
+LowlevelKeyboardProc    @5
+CBTProc                 @6

@@ -33,7 +33,16 @@
     <ClInclude Include="SpawnProcessesDlg.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="SearchThread.h">
+    <ClInclude Include="ProcessInfo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="HookClient.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MouseHookEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MemorySearchThread.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -50,7 +59,16 @@
     <ClCompile Include="SpawnProcessesDlg.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="SearchThread.cpp">
+    <ClCompile Include="ProcessInfo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="HookClient.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MouseHookEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MemorySearchThread.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -63,9 +81,18 @@
     <None Include="res\ProcessMemoryEditor.rc2">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="res\Find.cur">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\ProcessMemoryEditor.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\Find.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\Finding.bmp">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>
