@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "ProcessMemoryEditor.h"
 #include "MemorySearchThread.h"
+#include <algorithm>
 
 #define MAX_SEARCH_STRING_LEN   256
 
@@ -216,8 +217,8 @@ CMemorySearchThread::~CMemorySearchThread()
         m_pszSearchValueW = nullptr;
     }
 }
-
-LRESULT CMemorySearchThread::SendMessageToOwner(EThreadNotifyCode code, LPARAM data /* = NULL */)
+/*
+LRESULT CMemorySearchThread::SendMessageToOwner(EThreadNotifyCode code, LPARAM data)
 {
     LRESULT res = 0;
 
@@ -227,7 +228,7 @@ LRESULT CMemorySearchThread::SendMessageToOwner(EThreadNotifyCode code, LPARAM d
 
     return res;
 }
-
+*/
 LRESULT CMemorySearchThread::PostMessageToOwner(EThreadNotifyCode code, LPARAM data /* = NULL */)
 {
     LRESULT res = 0;
@@ -308,6 +309,8 @@ BOOL CMemorySearchThread::IsByteArrayEqual(BYTE* p1, SIZE_T sz1, BYTE* p2, SIZE_
         return TRUE;
     }
 
+    //return std::equal(p1, p1 + sz1, p2)?TRUE:FALSE;
+
     for (SIZE_T index = 0; index < sz1; index++) {
         if (p1[index] != p2[index]) {
             return FALSE;
@@ -334,7 +337,11 @@ int CMemorySearchThread::SearchFull()
         DWORD dwNewProtection = 0;
         DWORD dwOldProtection = 0;
         BOOL bReadable = FALSE;
+        SIZE_T nTotalPageSize = 0;
+        SIZE_T nCurrentSize = 0;
+        CMap<LPVOID, LPVOID, SIZE_T, SIZE_T> mapAddressToSize;
 
+        //Calculate total page size
         do
         {
             m_locker.Lock();
@@ -346,49 +353,70 @@ int CMemorySearchThread::SearchFull()
 
             ZeroMemory(&memInfo, sizeof(MEMORY_BASIC_INFORMATION));
             nStructSize = VirtualQueryEx(m_hProcess, ptrCurrentAddress, &memInfo, sizeof(MEMORY_BASIC_INFORMATION));
-            if ( (0 < nStructSize) && (MEM_COMMIT == memInfo.State) ) {
-                bReadable = TRUE;
-                if ((PAGE_READONLY != memInfo.Protect) && (PAGE_READWRITE != memInfo.Protect)) {
-                    dwNewProtection = memInfo.Protect | PAGE_READWRITE;
-                    bReadable = VirtualProtectEx(m_hProcess, memInfo.BaseAddress, memInfo.RegionSize, dwNewProtection, &dwOldProtection);
+            if ((0 < nStructSize)) {
+                if (MEM_COMMIT == memInfo.State) {
+                    bReadable = TRUE;
+                    if ((PAGE_READONLY != memInfo.Protect) && (PAGE_READWRITE != memInfo.Protect)) {
+                        dwNewProtection = memInfo.Protect | PAGE_READWRITE;
+                        bReadable = VirtualProtectEx(m_hProcess, memInfo.BaseAddress, memInfo.RegionSize, PAGE_EXECUTE_READWRITE, &dwOldProtection);
+                    }
+
+                    if ((bReadable) && (0 < memInfo.RegionSize)) {
+                        mapAddressToSize.SetAt(memInfo.BaseAddress, memInfo.RegionSize);
+                        nTotalPageSize += memInfo.RegionSize;
+                    }
                 }
 
-                if ( (bReadable) && (0 < memInfo.RegionSize) ) {
-                    pRegionBuffer = new  BYTE[memInfo.RegionSize];
-                    ZeroMemory(pRegionBuffer, memInfo.RegionSize);
-                    nReadBytes = 0;
-                    try
-                    {
-                        if (ReadProcessMemory(m_hProcess, memInfo.BaseAddress, pRegionBuffer, memInfo.RegionSize, &nReadBytes)) {
-                            if (0 < nReadBytes) {
-                                for (index = 0; index < (memInfo.RegionSize - m_nBufSize); index++) {
-                                    m_locker.Lock();
-                                    if (IsStopped()) {
-                                        m_locker.Unlock();
-                                        break;
-                                    }
-                                    m_locker.Unlock();
+                ptrCurrentAddress = LPVOID(SIZE_T(memInfo.BaseAddress) + memInfo.RegionSize);
+            }
+        } while (ptrCurrentAddress < ptrMaxAddress);
 
-                                    ZeroMemory(pCompareBuffer, m_nBufSize);
-                                    CopyMemory(pCompareBuffer, pRegionBuffer + index, m_nBufSize);
-                                    if (IsByteArrayEqual(pCompareBuffer, m_nBufSize, m_pOriginBuffer, m_nBufSize)) {
-                                        PostMessageToOwner(EThreadNotifyCode::eData, (LPARAM)LPVOID(SIZE_T(memInfo.BaseAddress) + index));
-                                    }
-                                }
+        PostMessageToOwner(EThreadNotifyCode::eProgressRange, MAKELPARAM(0,100));
+
+        //Perform read memory
+        POSITION pos = mapAddressToSize.GetStartPosition();
+        while(pos)
+        {
+            mapAddressToSize.GetNextAssoc(pos, ptrCurrentAddress, nReadBytes);
+            m_locker.Lock();
+            if (IsStopped()) {
+                m_locker.Unlock();
+                break;
+            }
+            m_locker.Unlock();
+
+            pRegionBuffer = new BYTE[nReadBytes];
+            try
+            {
+                if (ReadProcessMemory(m_hProcess, ptrCurrentAddress, pRegionBuffer, nReadBytes, &nReadBytes)) {
+                    if (0 < nReadBytes) {
+                        for (index = 0; index < (nReadBytes - m_nBufSize); index++) {
+                            m_locker.Lock();
+                            if (IsStopped()) {
+                                m_locker.Unlock();
+                                break;
+                            }
+                            m_locker.Unlock();
+
+                            ZeroMemory(pCompareBuffer, m_nBufSize);
+                            CopyMemory(pCompareBuffer, pRegionBuffer + index, m_nBufSize);
+                            if (IsByteArrayEqual(pCompareBuffer, m_nBufSize, m_pOriginBuffer, m_nBufSize)) {
+                                PostMessageToOwner(EThreadNotifyCode::eData, (LPARAM)ptrCurrentAddress + index);
                             }
                         }
                     }
-                    catch (...) {;}
 
-                    if (nullptr != pRegionBuffer) {
-                        delete[] pRegionBuffer;
-                        pRegionBuffer = nullptr;
-                    }
+                    nCurrentSize += nReadBytes;
+                    PostMessageToOwner(EThreadNotifyCode::eProgressValue, LPARAM(double(nCurrentSize) / double(nTotalPageSize)*double(100)));
                 }
             }
+            catch (...) {continue ; }
 
-            ptrCurrentAddress = LPVOID(SIZE_T(memInfo.BaseAddress) + memInfo.RegionSize);
-        } while (ptrCurrentAddress < ptrMaxAddress);   //End of "while (ptrCurrentAddress < ptrMaxAddress)"
+            if (nullptr != pRegionBuffer) {
+                delete[] pRegionBuffer;
+                pRegionBuffer = nullptr;
+            }
+        }
 
         if (nullptr != pCompareBuffer) {
             delete[] pCompareBuffer;

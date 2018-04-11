@@ -45,6 +45,9 @@
     <ClInclude Include="MemorySearchThread.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SplashDlg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ProcessMemoryEditor.cpp">
@@ -71,6 +74,9 @@
     <ClCompile Include="MemorySearchThread.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SplashDlg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="ProcessMemoryEditor.rc">
@@ -93,6 +99,18 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="res\Finding.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\U23VN.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\KinhHoang.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\KinhHoang.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\mu.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

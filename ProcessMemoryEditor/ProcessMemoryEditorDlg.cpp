@@ -1,4 +1,4 @@
-
+﻿
 // ProcessMemoryEditorDlg.cpp : implementation file
 //
 
@@ -22,7 +22,7 @@ CProcessMemoryEditorDlg::CProcessMemoryEditorDlg(CWnd* pParent /*=NULL*/)
     m_hFindBmp = (HBITMAP)LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDB_BITMAP1), IMAGE_BITMAP, 24, 24, LR_DEFAULTCOLOR);
     m_hFindingBmp = (HBITMAP)LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDB_BITMAP2), IMAGE_BITMAP, 24, 24, LR_DEFAULTCOLOR);
     m_hFindingCursor = AfxGetApp()->LoadCursor(IDC_CURSOR1);
-
+    m_hInjectedDll = nullptr;
     m_pSearchThread = nullptr;
     m_nTimerID = 0;
     m_dwProcessId = 0;
@@ -103,6 +103,9 @@ void CProcessMemoryEditorDlg::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, IDC_GRP_PROCESS, m_grpProcess);
     DDX_Control(pDX, IDC_GRP_INJECTION, m_grpInjection);
     DDX_Control(pDX, IDC_GRP_SEARCH, m_grpSearch);
+    DDX_Control(pDX, IDC_BTN_BROWSE_DLL, m_btnBrowseDll);
+    DDX_Control(pDX, IDC_EDT_INJECT_DLL, m_edtDllName);
+    DDX_Control(pDX, IDC_BTN_INJECT, m_btnInject);
 }
 
 BEGIN_MESSAGE_MAP(CProcessMemoryEditorDlg, CDialogEx)
@@ -134,6 +137,9 @@ BEGIN_MESSAGE_MAP(CProcessMemoryEditorDlg, CDialogEx)
     ON_BN_CLICKED(IDC_RAD_HEXA, &CProcessMemoryEditorDlg::OnBnClickedRadHexa)
     ON_BN_CLICKED(IDC_RAD_DECIMAL, &CProcessMemoryEditorDlg::OnBnClickedRadDecimal)
     ON_BN_CLICKED(IDC_BTN_STOP_SEARCH, &CProcessMemoryEditorDlg::OnBnClickedBtnStopSearch)
+    ON_BN_CLICKED(IDC_BTN_BROWSE_DLL, &CProcessMemoryEditorDlg::OnBnClickedBtnBrowseDll)
+    ON_BN_CLICKED(IDC_BTN_INJECT, &CProcessMemoryEditorDlg::OnBnClickedBtnInject)
+    ON_EN_CHANGE(IDC_EDT_INJECT_DLL, &CProcessMemoryEditorDlg::OnEnChangeEdtInjectDll)
 END_MESSAGE_MAP()
 
 
@@ -188,9 +194,32 @@ BOOL CProcessMemoryEditorDlg::OnInitDialog()
         }
     }
 
+    if (m_bRandomizeTitle) {
+        SetWindowText(GenerateRandomizeText(255));
+    }
+
+#ifdef _DEBUG
+    m_edtProcessName.SetWindowText(_T("D:\\Games\\MU\\MUViet\\MUViet\\mu.exe"));
+    m_edtDllName.SetWindowText(_T("D:\\Projects\\ProcessMemoryEditor\\Debug\\ICMAnti.dll"));
+#endif
+
 	return TRUE;
 }
 
+void CProcessMemoryEditorDlg::OnCancel()
+{
+    if (nullptr != m_pSearchThread) {
+        if (m_pSearchThread->IsStopped()) {
+            delete m_pSearchThread;
+            m_pSearchThread = nullptr;
+        }
+        else {
+            return;
+        }
+    }
+
+    CDialogEx::OnCancel();
+}
 
 void CProcessMemoryEditorDlg::OnDestroy()
 {
@@ -280,7 +309,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSpawnProcesses()
 
 void CProcessMemoryEditorDlg::OnBnClickedBtnBrowseProcess()
 {
-    static TCHAR BASED_CODE szFilters[] = _T("All files(*.*)|*.*|Executable files)*.exe)|*.exe||");
+    static TCHAR BASED_CODE szFilters[] = _T("All File Types(*.*)|*.*|Executable files(*.exe)|*.exe||");
     
     const UINT nMax = 256;
     TCHAR szFileName[nMax] = { 0 };
@@ -642,6 +671,8 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
             m_pSearchThread = nullptr;
         }
         m_eSeachKind = ESearch::eSearchNone;
+        m_lvwResults.SetItemCount(static_cast<int>(m_arrMatchAddress.GetCount()));
+        m_lvwResults.RedrawItems(0, static_cast<int>(m_arrMatchAddress.GetCount()) - 1);
     }
     break;
     case  EThreadNotifyCode::eData:
@@ -940,9 +971,23 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSave()
         break;
     }
 
-    if (WriteProcessMemory(hProcess, addr, pBuffer, nDataSize, &nByteWriten)) {
-        m_btnSaveData.EnableWindow(FALSE);
+    POSITION pos = m_lvwResults.GetFirstSelectedItemPosition();
+    int nItem = -1;
+    MEMORY_BASIC_INFORMATION memInfo = { 0 };
+    while (pos)
+    {
+        nItem = m_lvwResults.GetNextSelectedItem(pos);
+        addr = m_arrMatchAddress.GetAt(nItem);
+        ZeroMemory(&memInfo, sizeof(MEMORY_BASIC_INFORMATION));
+        if (sizeof(MEMORY_BASIC_INFORMATION) == VirtualQueryEx(hProcess, addr, &memInfo, sizeof(MEMORY_BASIC_INFORMATION))) {
+            if (PAGE_READWRITE == memInfo.Protect) {
+                if (WriteProcessMemory(hProcess, addr, pBuffer, nDataSize, &nByteWriten)) {
+                    m_btnSaveData.EnableWindow(FALSE);
+                }
+            }
+        }
     }
+
     delete[] pBuffer;
     pBuffer = nullptr;
     CloseHandle(hProcess);
@@ -965,23 +1010,29 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnBrowseLaunch()
     m_edtProcessName.GetWindowText(strProcName);
     GetCurrentDirectory(MAX_PATH - 1, strCurDir.GetBuffer(_MAX_PATH));
     strCurDir.ReleaseBuffer();
-    int nBackSlash = strProcName.Find('\\');
+    int nBackSlash = strProcName.ReverseFind('\\');
     if (nBackSlash) {
         strCurDir = strProcName.Left(nBackSlash);
     }
 
     if (!CreateProcess(nullptr, strProcName.GetBuffer(), nullptr, nullptr, FALSE, 0, nullptr, (LPCTSTR)strCurDir, &si, &pi)) {
-        strProcName.ReleaseBuffer();
-        AfxMessageBox(_T("Cannot launch process."));
+        DWORD dwErr = GetLastError();
+        CString strErr;
+        FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, nullptr, dwErr, 0, strErr.GetBuffer(255), 255, nullptr);
+        strErr.ReleaseBuffer();
+        MessageBox(strErr, _T("Error"), MB_ICONERROR);
         return;
     }
-    strProcName.ReleaseBuffer();
+
     if (nullptr == pi.hProcess) {
         return;
     }
 
-    strProcName.Format(_T("0x%p"), pi.hProcess);
-    WaitForSingleObject(pi.hProcess, 100);
+    WaitForInputIdle(pi.hProcess, INFINITE);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    strProcName.Format(_T("%ld"), pi.dwProcessId);
     m_edtProcessID.SetWindowText(strProcName);
     m_btnLaunchProcess.EnableWindow(FALSE);
     m_btnSearchWhole.EnableWindow(m_edtProcessID.GetWindowTextLength() > 0);
@@ -1401,7 +1452,7 @@ LRESULT CProcessMemoryEditorDlg::OnMouseHookEngineNotify(WPARAM wParam, LPARAM l
             if (!IsMyWindowFamily(pWndFromPt)) {
                 DWORD dwProcessId = 0;
                 DWORD dwThreadId = GetWindowThreadProcessId(pWndFromPt->GetSafeHwnd(), &dwProcessId);
-                SetDlgItemInt(IDC_EDT_PROCESS_ID, dwProcessId);
+                SetDlgItemInt(IDC_EDT_PROCESS_ID, dwProcessId);                
             }
         }
     }
@@ -1435,4 +1486,120 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnStopSearch()
             return;
         }
     }
+}
+
+
+void CProcessMemoryEditorDlg::OnBnClickedBtnBrowseDll()
+{
+    static TCHAR BASED_CODE szFilters[] = _T("All File Types(*.*)|*.*|Dynamic Link Library files(*.dll)|*.dll||");
+
+    const UINT nMax = 256;
+    TCHAR szFileName[nMax] = { 0 };
+    int nChars = m_edtDllName.GetWindowText(szFileName, nMax - 1);
+    szFileName[nChars] = 0;
+
+    CFileDialog dlgOpenFile(TRUE, nullptr, szFileName, OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, szFilters);
+    if (dlgOpenFile.DoModal() != IDOK) {
+        return;
+    }
+
+    m_edtDllName.SetWindowText(dlgOpenFile.GetPathName());
+}
+
+
+void CProcessMemoryEditorDlg::OnBnClickedBtnInject()
+{
+    CString strProcId;
+    m_edtProcessID.GetWindowText(strProcId);
+    CStringA strProcIdA;
+    strProcIdA = strProcId;
+    DWORD dwProcID = static_cast<DWORD>(atol(strProcIdA));
+    if (0 == dwProcID) {
+        AfxMessageBox(_T("Process ID cannot be empty."));
+        m_edtProcessID.SetFocus();
+        return;
+    }
+
+    CString strDllname;
+    m_edtDllName.GetWindowText(strDllname);
+
+    SIZE_T nSize = (strDllname.GetLength() * sizeof(TCHAR));
+    if (0 >= nSize) {
+        AfxMessageBox(_T("Dll name cannot be empty."));
+        m_edtDllName.SetFocus();
+        return;
+    }
+
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcID);
+    if (nullptr == hProcess) {
+        AfxMessageBox(_T("Cannot attach the process."));
+        return;
+    }
+
+
+    HMODULE hKernel32 = GetModuleHandle(_T("Kernel32.dll"));
+    if (nullptr == hKernel32) {
+        AfxMessageBox(_T("Cannot get Kernel32 module handle."));
+        CloseHandle(hProcess);
+        return;
+    }
+
+    LPVOID lpBuffer = VirtualAllocEx(hProcess, nullptr, nSize + sizeof(TCHAR), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (nullptr == lpBuffer) {
+        CloseHandle(hProcess);
+        AfxMessageBox(_T("Cannot allocate buffer on target process."));
+        return;
+    }
+
+    SIZE_T nWritenBytes = 0;
+    if (!WriteProcessMemory(hProcess, lpBuffer, strDllname.GetBuffer(), nSize, &nWritenBytes)) {
+        AfxMessageBox(_T("Cannot write data to buffer on target process."));
+        VirtualFreeEx(hProcess, lpBuffer, 0, MEM_RELEASE);
+        CloseHandle(hProcess);
+        return;
+    }
+
+    HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)GetProcAddress(hKernel32, "LoadLibraryW"), lpBuffer, 0, nullptr);
+    if (nullptr == hThread) {
+        VirtualFreeEx(hProcess, lpBuffer, 0, MEM_RELEASE);
+        CloseHandle(hProcess);
+        return;
+    }
+    WaitForSingleObject(hThread, INFINITE);
+    DWORD dwExitCode = 0;
+    GetExitCodeThread(hThread,  &dwExitCode);
+    CopyMemory(&m_hInjectedDll, &dwExitCode, sizeof(DWORD));
+
+
+    CloseHandle(hThread);
+    hThread = nullptr;
+    VirtualFreeEx(hProcess, lpBuffer, 0, MEM_RELEASE);
+    lpBuffer = nullptr;
+    CloseHandle(hProcess);
+    hProcess = nullptr;
+}
+
+
+void CProcessMemoryEditorDlg::OnEnChangeEdtInjectDll()
+{
+    m_btnInject.EnableWindow((m_edtDllName.GetWindowTextLength() > 0) && (m_edtProcessID.GetWindowTextLength() > 0));
+}
+
+
+CString CProcessMemoryEditorDlg::GenerateRandomizeText(int nMaxLength)
+{
+    char characters[] = { 'A', 'B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','X','Y','Z','W','0','1','2','3','4','5','6','7','8','9',' '};
+    srand(nMaxLength);
+    CStringA str;
+    int nIndex = 0;
+    char temp = '\0';
+    int range = rand();
+    while (range <= 0 || range > nMaxLength) { range = rand(); }
+    for(int n = 0; n < range; n++) {
+        nIndex = rand();
+        while (nIndex < 0 || nIndex>32) { nIndex = rand(); }
+        str += (characters[nIndex]);
+    }
+
+    return CString( str );
 }

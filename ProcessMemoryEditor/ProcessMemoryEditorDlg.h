@@ -21,6 +21,7 @@ public:
 private:
     virtual BOOL OnInitDialog();
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
+    virtual void OnCancel();
 private:
     afx_msg void OnDestroy();
     afx_msg void OnPaint();
@@ -49,6 +50,9 @@ private:
     afx_msg void OnBnClickedRadHexa();
     afx_msg void OnBnClickedRadDecimal();
     afx_msg void OnBnClickedBtnStopSearch();
+    afx_msg void OnBnClickedBtnBrowseDll();
+    afx_msg void OnBnClickedBtnInject();
+    afx_msg void OnEnChangeEdtInjectDll();
 private:
     BOOL IsNumeric(LPCTSTR lpszString);
     void EnableWindows(HWND hWnd, BOOL bEnable);
@@ -56,6 +60,7 @@ private:
     void OnListResultItemChanged();
     BOOL PreTranslateMessage(MSG* pMsg);
     BOOL IsMyWindowFamily(CWnd* pWnd);
+    CString GenerateRandomizeText(int nMaxLength);
 private:
     static UINT s_nHookEngineNotifyMsg;
     ESearch m_eSeachKind;
@@ -97,8 +102,12 @@ private:
     CButton m_radDecimal;
     CButton m_btnStopSearch;
     CFont m_fontBold;
-public:
     CStatic m_grpProcess;
     CStatic m_grpInjection;
     CStatic m_grpSearch;
+    CButton m_btnBrowseDll;
+    CEdit m_edtDllName;
+    CButton m_btnInject;
+    HMODULE m_hInjectedDll;
+    BOOL m_bRandomizeTitle;
 };

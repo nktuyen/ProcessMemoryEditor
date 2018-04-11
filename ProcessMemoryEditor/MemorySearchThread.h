@@ -41,7 +41,7 @@ public:
     BOOL IsStopped();
     inline int ExitCode() { return m_nExitCode; }
 private:
-    LRESULT SendMessageToOwner(EThreadNotifyCode code, LPARAM data = NULL);
+    //LRESULT SendMessageToOwner(EThreadNotifyCode code, LPARAM data = NULL);
     LRESULT PostMessageToOwner(EThreadNotifyCode code, LPARAM data = NULL);
     inline void SetExitCode(EThreadExitCode eCode) { m_nExitCode = static_cast<int>(eCode); }
     void Construct();

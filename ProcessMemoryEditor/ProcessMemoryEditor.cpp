@@ -4,6 +4,7 @@
 
 #include "stdafx.h"
 #include "ProcessMemoryEditor.h"
+#include "SplashDlg.h"
 #include "ProcessMemoryEditorDlg.h"
 
 #ifdef _DEBUG
@@ -33,6 +34,9 @@ BOOL CProcessMemoryEditorApp::InitInstance()
 	CWinApp::InitInstance();
 
 	SetRegistryKey(_T("NKTUYEN"));
+
+    CSplashDlg splashDlg;
+    splashDlg.DoModal();
 
 	CProcessMemoryEditorDlg dlg;
 	m_pMainWnd = &dlg;
