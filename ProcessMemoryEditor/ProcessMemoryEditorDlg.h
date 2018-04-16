@@ -94,6 +94,7 @@ private:
     CButton m_btnLaunchProcess;
     CButton m_btnSearchInAddresses;
     CArray<LPVOID, LPVOID> m_arrMatchAddress;
+	BOOL m_bInternalEditChanged;
     CButton m_btnReadProcessMemory;
     CEdit m_edtDataLength;
     CStatic m_sttProcessFromWnd;

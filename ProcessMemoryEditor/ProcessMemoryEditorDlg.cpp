@@ -29,6 +29,7 @@ CProcessMemoryEditorDlg::CProcessMemoryEditorDlg(CWnd* pParent /*=NULL*/)
     m_pMouseHookEngine = nullptr;
     m_pHookManager = nullptr;
     m_eSeachKind = ESearch::eSearchNone;
+	m_bInternalEditChanged = FALSE;
 
     CString strMsgId;
     if (0 == s_nHookEngineNotifyMsg) {
@@ -199,7 +200,7 @@ BOOL CProcessMemoryEditorDlg::OnInitDialog()
     }
 
 #ifdef _DEBUG
-    m_edtProcessName.SetWindowText(_T("D:\\Games\\MU\\MUViet\\MUViet\\mu.exe"));
+    m_edtProcessName.SetWindowText(_T("C:\\Windows\\notepad.exe"));
     m_edtDllName.SetWindowText(_T("D:\\Projects\\ProcessMemoryEditor\\Debug\\ICMAnti.dll"));
 #endif
 
@@ -369,6 +370,11 @@ BOOL CProcessMemoryEditorDlg::IsNumeric(LPCTSTR lpszString)
 
 void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
 {
+	if (nullptr != m_pSearchThread) {
+		delete m_pSearchThread;
+		m_pSearchThread = nullptr;
+	}
+
     if (nullptr == m_pSearchThread) { //Start search
         if (m_edtSearchValue.GetWindowTextLength() <= 0) {
             AfxMessageBox(_T("Search value is not inputed."));
@@ -559,7 +565,6 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
     {
     case EThreadNotifyCode::eStart:
     {
-        m_lvwResults.DeleteAllItems();
         m_arrMatchAddress.RemoveAll();
         OnListResultItemChanged();
 
@@ -629,27 +634,7 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
         if (nullptr != m_pSearchThread) {
             nError = static_cast<EThreadExitCode>( m_pSearchThread->ExitCode() );
         }
-
-        m_lvwResults.SetItemCount(static_cast<int>( m_arrMatchAddress.GetCount()) );
-        m_lvwResults.RedrawItems(0, static_cast<int>( m_arrMatchAddress.GetCount() - 1) );
-
-        switch (nError)
-        {
-        case EThreadExitCode::eSuccess:
-        {
-            MessageBox(_T("Search completed."), AfxGetAppName(), MB_ICONINFORMATION);
-        }
-        break;
-        case  EThreadExitCode::eUserAborted:
-        {
-            //Do nothing
-        }
-        break;
-        default:
-            MessageBox(_T("Search was finished with error."), AfxGetAppName(), MB_ICONWARNING);
-            break;
-        }
-
+        
         switch (m_eSeachKind)
         {
         case ESearch::eSearchWhole:
@@ -666,28 +651,39 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
             break;
         }
 
-        if (nullptr != m_pSearchThread) {
-            delete m_pSearchThread;
-            m_pSearchThread = nullptr;
-        }
+        /*if (nullptr != m_pSearchThread) {
+			delete m_pSearchThread;
+			m_pSearchThread = nullptr;
+        }*/
+
+		OnListResultItemChanged();
+
+		switch (nError)
+		{
+		case EThreadExitCode::eSuccess:
+		{
+			MessageBox(_T("Search completed."), AfxGetAppName(), MB_ICONINFORMATION);
+		}
+		break;
+		case  EThreadExitCode::eUserAborted:
+		{
+			//Do nothing
+		}
+		break;
+		default:
+			MessageBox(_T("Search was finished with error."), AfxGetAppName(), MB_ICONWARNING);
+			break;
+		}
+
         m_eSeachKind = ESearch::eSearchNone;
-        m_lvwResults.SetItemCount(static_cast<int>(m_arrMatchAddress.GetCount()));
-        m_lvwResults.RedrawItems(0, static_cast<int>(m_arrMatchAddress.GetCount()) - 1);
     }
     break;
     case  EThreadNotifyCode::eData:
-    {
-        CString strItemCount;
-        DWORD_PTR ptrAddress = (DWORD_PTR)lParam;
-        m_arrMatchAddress.Add(LPVOID(ptrAddress));
-        INT_PTR nCount = m_arrMatchAddress.GetCount();
-
-        strItemCount.Format(_T("Total: %ld matched addresses"), nCount);
-        m_sttStatusText.SetWindowText(strItemCount);
-
-        //m_lvwResults.SetItemCount(nCount);
-    }
-    break;
+	{
+		DWORD_PTR ptrAddress = (DWORD_PTR)lParam;
+		m_arrMatchAddress.Add(LPVOID(ptrAddress));
+	}
+	break;
     case EThreadNotifyCode::eProgressRange:
     {
         int nMin = (int)LOWORD(lParam);
@@ -731,8 +727,12 @@ void CProcessMemoryEditorDlg::RestoreWindowsEnable(HWND hWnd)
 
 void CProcessMemoryEditorDlg::OnEnChangeEdtSeachValue()
 {
-    m_lvwResults.DeleteAllItems();
-    OnListResultItemChanged();
+	if (m_bInternalEditChanged) {
+		return;
+	}
+
+	m_arrMatchAddress.RemoveAll();
+	OnListResultItemChanged();
 
     m_btnSearchWhole.EnableWindow((m_edtProcessID.GetWindowTextLength() > 0) && (m_edtSearchValue.GetWindowTextLength() > 0));
 
@@ -800,10 +800,21 @@ void CProcessMemoryEditorDlg::OnListResultItemChanged()
     m_edtMemoryData.SetWindowText(nullptr);
     m_btnSaveData.EnableWindow(FALSE);
 
-    if (0 >= m_lvwResults.GetItemCount()) {
-        m_arrMatchAddress.RemoveAll();
+    if (0 >= m_arrMatchAddress.GetCount()) {
+		m_lvwResults.SetItemCount(0);
+		CString strStatus;
+		strStatus = _T("Total: 0 matched addresses");
+		m_sttStatusText.SetWindowText(strStatus);
+
         return;
     }
+
+	m_lvwResults.SetItemCount(static_cast<int>(m_arrMatchAddress.GetCount()));
+	m_lvwResults.RedrawItems(0, static_cast<int>( m_arrMatchAddress.GetCount() ));
+
+	CString strStatus;
+	strStatus.Format(_T("Total: %ld matched addresses"), static_cast<int>(m_arrMatchAddress.GetCount()));
+	m_sttStatusText.SetWindowText(strStatus);
 
     if (0 >= m_lvwResults.GetSelectedCount()) {
         return;
@@ -1061,6 +1072,9 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearchInAddresses()
         m_edtMemoryData.SetFocus();
         return;
     }
+	m_bInternalEditChanged = TRUE;
+	m_edtSearchValue.SetWindowText(strVal);
+	m_bInternalEditChanged = FALSE;
 
     int nSel = m_cboDataTypes.GetCurSel();
     if (CB_ERR == nSel) {
@@ -1475,7 +1489,7 @@ void CProcessMemoryEditorDlg::OnBnClickedRadDecimal()
 
 void CProcessMemoryEditorDlg::OnBnClickedBtnStopSearch()
 {
-    if (nullptr != m_pSearchThread) {
+    if ( (nullptr != m_pSearchThread) && (! m_pSearchThread->IsStopped()) ){
         m_pSearchThread->SuspendThread();
         int nConfirm = MessageBox(_T("Are you sure to abort current operation?"), _T("Confirmation"), MB_YESNO | MB_OK);
         m_pSearchThread->ResumeThread();
@@ -1559,7 +1573,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnInject()
         return;
     }
 
-    HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)GetProcAddress(hKernel32, "LoadLibraryW"), lpBuffer, 0, nullptr);
+    HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)GetProcAddress(hKernel32, "LoadLibraryA"), lpBuffer, 0, nullptr);
     if (nullptr == hThread) {
         VirtualFreeEx(hProcess, lpBuffer, 0, MEM_RELEASE);
         CloseHandle(hProcess);

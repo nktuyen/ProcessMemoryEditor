@@ -4,6 +4,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ProcessMemoryEditor", "ProcessMemoryEditor\ProcessMemoryEditor.vcxproj", "{81BDAC07-C6B1-4836-AAD6-50EBE5C2E9EA}"
+	ProjectSection(ProjectDependencies) = postProject
+		{E5326ADF-D3BF-4CC6-8494-3A11289B3BD7} = {E5326ADF-D3BF-4CC6-8494-3A11289B3BD7}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HookEngine", "HookEngine\HookEngine.vcxproj", "{E5326ADF-D3BF-4CC6-8494-3A11289B3BD7}"
 EndProject

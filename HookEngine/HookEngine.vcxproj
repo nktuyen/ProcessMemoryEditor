@@ -93,6 +93,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>HookEngine.def</ModuleDefinitionFile>
+      <AdditionalDependencies>User32.lib</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>mkdir "..\inc\"
@@ -112,6 +113,7 @@ xcopy "HookEngine.h" "..\inc\HookEngine.h" /Y</Command>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>HookEngine.def</ModuleDefinitionFile>
+      <AdditionalDependencies>User32.lib</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>mkdir "..\inc\"
@@ -135,6 +137,7 @@ xcopy "HookEngine.h" "..\inc\HookEngine.h" /Y</Command>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>HookEngine.def</ModuleDefinitionFile>
+      <AdditionalDependencies>User32.lib</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>mkdir "..\inc\"
@@ -158,6 +161,7 @@ xcopy "HookEngine.h" "..\inc\HookEngine.h" /Y</Command>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>HookEngine.def</ModuleDefinitionFile>
+      <AdditionalDependencies>User32.lib</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>mkdir "..\inc\"

@@ -7,19 +7,18 @@ class CMemorySearchThread : public CWinThread
 private:
     DWORD m_dwProcessId;
     UINT m_nCommunicateMsg;
-    WCHAR *m_pszSearchValueW;
-    CHAR *m_pszSearchValueA;
-    BYTE m_bySearchvalue;
-    SHORT m_shSearchValue;
-    WORD m_wSearchvalue;
-    DWORD m_dwSearchvalue;
-    QWORD m_qwSearchvalue;
-    FLOAT m_fSearchvalue;
-    DOUBLE m_dblSearchvalue;
+	WCHAR *m_pszSearchValueW;
+	CHAR *m_pszSearchValueA;
+	BYTE m_bySearchvalue;
+	SHORT m_shSearchValue;
+	WORD m_wSearchvalue;
+	DWORD m_dwSearchvalue;
+	QWORD m_qwSearchvalue;
+	FLOAT m_fSearchvalue;
+	DOUBLE m_dblSearchvalue;
     EDataType m_eSearchType;
     int m_nExitCode;
-    volatile BOOL m_bCancel;
-    CMutex m_locker;
+    volatile BOOL m_bStop;
     SYSTEM_INFO m_SysInfo;
     HANDLE m_hProcess;
     BYTE* m_pOriginBuffer;
@@ -41,7 +40,7 @@ public:
     BOOL IsStopped();
     inline int ExitCode() { return m_nExitCode; }
 private:
-    //LRESULT SendMessageToOwner(EThreadNotifyCode code, LPARAM data = NULL);
+    LRESULT SendMessageToOwner(EThreadNotifyCode code, LPARAM data = NULL);
     LRESULT PostMessageToOwner(EThreadNotifyCode code, LPARAM data = NULL);
     inline void SetExitCode(EThreadExitCode eCode) { m_nExitCode = static_cast<int>(eCode); }
     void Construct();

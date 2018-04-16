@@ -24,7 +24,7 @@ void CMemorySearchThread::Construct()
     m_pOriginBuffer = nullptr;
     m_nBufSize = 0;
     m_eSearchType = EDataType::eUnknow;
-    m_bCancel = TRUE;
+    m_bStop = TRUE;
     m_dwProcessId = 0;
     m_hProcess = nullptr;
     m_arrAddress.RemoveAll();
@@ -36,7 +36,7 @@ void CMemorySearchThread::Construct()
 
 CMemorySearchThread::CMemorySearchThread(CWnd* pOwnerWnd, UINT nCommMsg, DWORD dwProcessId, LPCWSTR lpszWSearchValueW, CArray<LPVOID, LPVOID>* pAddressList)
 {
-    Construct();
+	Construct();
     m_pMainWnd = pOwnerWnd;
     m_nCommunicateMsg = nCommMsg;
     m_eSearchType = EDataType::eUnicodeString;
@@ -59,7 +59,7 @@ CMemorySearchThread::CMemorySearchThread(CWnd* pOwnerWnd, UINT nCommMsg, DWORD d
 
 CMemorySearchThread::CMemorySearchThread(CWnd* pOwnerWnd, UINT nCommMsg, DWORD dwProcessId, LPCSTR lpszSearchValueA, CArray<LPVOID, LPVOID>* pAddressList)
 {
-    Construct();
+	Construct();
     m_pMainWnd = pOwnerWnd;
     m_nCommunicateMsg = nCommMsg;
     m_eSearchType = EDataType::eANSIString;
@@ -217,7 +217,7 @@ CMemorySearchThread::~CMemorySearchThread()
         m_pszSearchValueW = nullptr;
     }
 }
-/*
+
 LRESULT CMemorySearchThread::SendMessageToOwner(EThreadNotifyCode code, LPARAM data)
 {
     LRESULT res = 0;
@@ -228,7 +228,7 @@ LRESULT CMemorySearchThread::SendMessageToOwner(EThreadNotifyCode code, LPARAM d
 
     return res;
 }
-*/
+
 LRESULT CMemorySearchThread::PostMessageToOwner(EThreadNotifyCode code, LPARAM data /* = NULL */)
 {
     LRESULT res = 0;
@@ -252,21 +252,19 @@ int CMemorySearchThread::ExitInstance()
 
 BOOL CMemorySearchThread::IsStopped()
 {
-    return m_bCancel;
+    return m_bStop;
 }
 
 void CMemorySearchThread::Stop()
 {
-    m_locker.Lock();
-    m_bCancel = TRUE;
+    m_bStop = TRUE;
     SetExitCode(EThreadExitCode::eUserAborted);
-    m_locker.Unlock();
 }
 
 BOOL CMemorySearchThread::Init()
 {
     m_hProcess = nullptr;
-    m_bCancel = TRUE;
+    m_bStop = TRUE;
 
     if (0 == m_dwProcessId) {
         SetExitCode(EThreadExitCode::eInvalidProcessId);
@@ -279,7 +277,7 @@ BOOL CMemorySearchThread::Init()
         return FALSE;
     }
 
-    m_bCancel = FALSE;
+    m_bStop = FALSE;
     SetExitCode(EThreadExitCode::eSuccess);
 
     return TRUE;
@@ -322,7 +320,7 @@ BOOL CMemorySearchThread::IsByteArrayEqual(BYTE* p1, SIZE_T sz1, BYTE* p2, SIZE_
 
 int CMemorySearchThread::SearchFull() 
 {
-    PostMessageToOwner(EThreadNotifyCode::eStart);
+	SendMessageToOwner(EThreadNotifyCode::eStart);
 
     if (Init()) {
         LPVOID ptrCurrentAddress = m_SysInfo.lpMinimumApplicationAddress;
@@ -344,13 +342,6 @@ int CMemorySearchThread::SearchFull()
         //Calculate total page size
         do
         {
-            m_locker.Lock();
-            if (IsStopped()) {
-                m_locker.Unlock();
-                break;
-            }
-            m_locker.Unlock();
-
             ZeroMemory(&memInfo, sizeof(MEMORY_BASIC_INFORMATION));
             nStructSize = VirtualQueryEx(m_hProcess, ptrCurrentAddress, &memInfo, sizeof(MEMORY_BASIC_INFORMATION));
             if ((0 < nStructSize)) {
@@ -369,45 +360,32 @@ int CMemorySearchThread::SearchFull()
 
                 ptrCurrentAddress = LPVOID(SIZE_T(memInfo.BaseAddress) + memInfo.RegionSize);
             }
-        } while (ptrCurrentAddress < ptrMaxAddress);
+        } while ((ptrCurrentAddress < ptrMaxAddress) && (!m_bStop));
 
-        PostMessageToOwner(EThreadNotifyCode::eProgressRange, MAKELPARAM(0,100));
+		SendMessageToOwner(EThreadNotifyCode::eProgressRange, MAKELPARAM(0,100));
 
         //Perform read memory
         POSITION pos = mapAddressToSize.GetStartPosition();
-        while(pos)
+        while(pos && (!m_bStop))
         {
             mapAddressToSize.GetNextAssoc(pos, ptrCurrentAddress, nReadBytes);
-            m_locker.Lock();
-            if (IsStopped()) {
-                m_locker.Unlock();
-                break;
-            }
-            m_locker.Unlock();
 
             pRegionBuffer = new BYTE[nReadBytes];
             try
             {
                 if (ReadProcessMemory(m_hProcess, ptrCurrentAddress, pRegionBuffer, nReadBytes, &nReadBytes)) {
                     if (0 < nReadBytes) {
-                        for (index = 0; index < (nReadBytes - m_nBufSize); index++) {
-                            m_locker.Lock();
-                            if (IsStopped()) {
-                                m_locker.Unlock();
-                                break;
-                            }
-                            m_locker.Unlock();
-
+                        for (index = 0; (index < (nReadBytes - m_nBufSize))&&(!m_bStop); index++) {
                             ZeroMemory(pCompareBuffer, m_nBufSize);
                             CopyMemory(pCompareBuffer, pRegionBuffer + index, m_nBufSize);
                             if (IsByteArrayEqual(pCompareBuffer, m_nBufSize, m_pOriginBuffer, m_nBufSize)) {
-                                PostMessageToOwner(EThreadNotifyCode::eData, (LPARAM)ptrCurrentAddress + index);
+								SendMessageToOwner(EThreadNotifyCode::eData, (LPARAM)LPVOID(SIZE_T(ptrCurrentAddress) + index));
                             }
                         }
                     }
 
                     nCurrentSize += nReadBytes;
-                    PostMessageToOwner(EThreadNotifyCode::eProgressValue, LPARAM(double(nCurrentSize) / double(nTotalPageSize)*double(100)));
+					SendMessageToOwner(EThreadNotifyCode::eProgressValue, LPARAM(double(nCurrentSize) / double(nTotalPageSize)*double(100)));
                 }
             }
             catch (...) {continue ; }
@@ -432,17 +410,18 @@ int CMemorySearchThread::SearchFull()
         m_hProcess = nullptr;
     }
 
-    PostMessageToOwner(EThreadNotifyCode::eFinish, (LPARAM)m_nExitCode);
+	m_bStop = TRUE;
+	SendMessageToOwner(EThreadNotifyCode::eFinish, (LPARAM)m_nExitCode);
     return m_nExitCode;
 }
 
 int CMemorySearchThread::SearchInSpecifiedAddresses()
 {
-    PostMessageToOwner(EThreadNotifyCode::eStart);
+	SendMessageToOwner(EThreadNotifyCode::eStart);
 
     if (Init()) {
         INT_PTR nSize = m_arrAddress.GetCount();
-        PostMessageToOwner(EThreadNotifyCode::eProgressRange, MAKELPARAM(0, 100));
+		SendMessageToOwner(EThreadNotifyCode::eProgressRange, MAKELPARAM(0, 100));
 
         INT_PTR nCount = m_arrAddress.GetCount();
         LPVOID lpCurrentAddress = nullptr;
@@ -457,19 +436,22 @@ int CMemorySearchThread::SearchInSpecifiedAddresses()
                 if (ReadProcessMemory(m_hProcess, lpCurrentAddress, pBuffer, m_nBufSize, &nReadBytes)) {
                     if (0 < nReadBytes) {
                         if (IsByteArrayEqual(pBuffer, m_nBufSize, m_pOriginBuffer, m_nBufSize)) {
-                            PostMessageToOwner(EThreadNotifyCode::eData, (LPARAM)lpCurrentAddress);
+							SendMessageToOwner(EThreadNotifyCode::eData, (LPARAM)lpCurrentAddress);
                         }
                     }
                 }
             }
 
-            PostMessageToOwner(EThreadNotifyCode::eProgressValue, (LPARAM)int(float(n)/float(nCount)*100.0f));
+			SendMessageToOwner(EThreadNotifyCode::eProgressValue, (LPARAM)int(float(n)/float(nCount)*100.0f));
         }
 
+		delete[] pBuffer;
+		pBuffer = nullptr;
         CloseHandle(m_hProcess);
         m_hProcess = nullptr;
     }
 
-    PostMessageToOwner(EThreadNotifyCode::eFinish, (LPARAM)m_nExitCode);
+	m_bStop = TRUE;
+    SendMessageToOwner(EThreadNotifyCode::eFinish, (LPARAM)m_nExitCode);
     return m_nExitCode;
 }

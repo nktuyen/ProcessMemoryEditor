@@ -37,10 +37,12 @@ BOOL CSplashDlg::OnInitDialog()
 {
     CDialog::OnInitDialog();
 
-
+#ifdef _DEBUG
+	m_byAlpha = 255;
+#else
     m_byAlpha = 0;
-    m_nTimerId = SetTimer(1988, 100, nullptr);
-
+#endif
+	m_nTimerId = SetTimer(1988, 100, nullptr);
     return TRUE;
 }
 
