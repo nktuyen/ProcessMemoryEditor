@@ -21,7 +21,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{81BDAC07-C6B1-4836-AAD6-50EBE5C2E9EA}</ProjectGuid>
     <RootNamespace>ProcessMemoryEditor</RootNamespace>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
     <Keyword>MFCProj</Keyword>
     <ProjectName>ProcessMemoryEditor</ProjectName>
   </PropertyGroup>
@@ -198,11 +198,13 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="MySetting.h" />
     <ClInclude Include="HookClient.h" />
     <ClInclude Include="MouseHookEngine.h" />
     <ClInclude Include="ProcessInfo.h" />
     <ClInclude Include="ProcessMemoryEditor.h" />
     <ClInclude Include="ProcessMemoryEditorDlg.h" />
+    <ClInclude Include="ProcessSearchSetting.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="MemorySearchThread.h" />
     <ClInclude Include="SpawnProcessesDlg.h" />
@@ -213,10 +215,12 @@
   <ItemGroup>
     <ClCompile Include="HookClient.cpp" />
     <ClCompile Include="MouseHookEngine.cpp" />
+    <ClCompile Include="MySetting.cpp" />
     <ClCompile Include="ProcessInfo.cpp" />
     <ClCompile Include="ProcessMemoryEditor.cpp" />
     <ClCompile Include="ProcessMemoryEditorDlg.cpp" />
     <ClCompile Include="MemorySearchThread.cpp" />
+    <ClCompile Include="ProcessSearchSetting.cpp" />
     <ClCompile Include="SpawnProcessesDlg.cpp" />
     <ClCompile Include="SplashDlg.cpp" />
     <ClCompile Include="stdafx.cpp">

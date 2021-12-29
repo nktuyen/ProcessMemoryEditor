@@ -15,6 +15,9 @@ class CProcessMemoryEditorApp : public CWinApp
 public:
 	CProcessMemoryEditorApp();
 	BOOL InitInstance();
+private:
+	void LoadSettings();
+	void SaveSettings();
 };
 
 extern CProcessMemoryEditorApp theApp;

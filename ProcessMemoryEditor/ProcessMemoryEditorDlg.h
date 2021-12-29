@@ -7,13 +7,14 @@
 #include "afxcmn.h"
 #include "MemorySearchThread.h"
 #include "MouseHookEngine.h"
+#include "MySetting.h"
 
 // CProcessMemoryEditorDlg dialog
 class CProcessMemoryEditorDlg : public CDialogEx
 {
     DECLARE_MESSAGE_MAP()
 public:
-	CProcessMemoryEditorDlg(CWnd* pParent = NULL);	// standard constructor
+	CProcessMemoryEditorDlg(CMySetting* settings = NULL, CWnd* pParent = NULL);	// standard constructor
     virtual ~CProcessMemoryEditorDlg();
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_MUHACKER_DIALOG };
@@ -53,6 +54,7 @@ private:
     afx_msg void OnBnClickedBtnBrowseDll();
     afx_msg void OnBnClickedBtnInject();
     afx_msg void OnEnChangeEdtInjectDll();
+	afx_msg void OnBnClickedBtnResetAddresses();
 private:
     BOOL IsNumeric(LPCTSTR lpszString);
     void EnableWindows(HWND hWnd, BOOL bEnable);
@@ -62,8 +64,9 @@ private:
     BOOL IsMyWindowFamily(CWnd* pWnd);
     CString GenerateRandomizeText(int nMaxLength);
 private:
+	CMySetting * m_pMySettings;
     static UINT s_nHookEngineNotifyMsg;
-    ESearch m_eSeachKind;
+    ESearchSource m_eSeachKind;
     IHookManager* m_pHookManager;
     HINSTANCE m_hHookEngineDLL;
     CMouseHookEngine* m_pMouseHookEngine;
@@ -77,7 +80,7 @@ private:
     CEdit m_edtProcessID;
     static UINT s_nSearchThreadNotifyMsg;   
     CButton m_btnSpawnProcess;
-    CButton m_btnSearchWhole;
+    CButton m_btnSearchFromMemory;
     CEdit m_edtSearchValue;
     CListCtrl m_lvwResults;
     CComboBox m_cboDataTypes;
@@ -89,11 +92,12 @@ private:
     UINT_PTR m_nTimerID;
     CEdit m_edtMemoryData;
     DWORD m_dwProcessId;
-    CButton m_btnSaveData;
+    CButton m_btnWriteProcessMemory;
     CEdit m_edtMemoryAddr;
     CButton m_btnLaunchProcess;
-    CButton m_btnSearchInAddresses;
+    CButton m_btnSearchFromAddressList;
     CArray<LPVOID, LPVOID> m_arrMatchAddress;
+	CArray<LPVOID, LPVOID> m_arrOriginalAddress;
 	BOOL m_bInternalEditChanged;
     CButton m_btnReadProcessMemory;
     CEdit m_edtDataLength;
@@ -111,4 +115,7 @@ private:
     CButton m_btnInject;
     HMODULE m_hInjectedDll;
     BOOL m_bRandomizeTitle;
+	CButton m_btnResetAddr;
+	CButton m_chkTopMost;
+	CMySetting* m_pSettings;
 };

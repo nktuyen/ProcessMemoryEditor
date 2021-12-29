@@ -48,6 +48,12 @@
     <ClInclude Include="SplashDlg.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="MySetting.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProcessSearchSetting.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ProcessMemoryEditor.cpp">
@@ -75,6 +81,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SplashDlg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MySetting.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ProcessSearchSetting.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

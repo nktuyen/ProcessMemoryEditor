@@ -1,6 +1,6 @@
 #pragma once
 
-typedef enum { eSearchNone = 0, eSearchWhole, wSearchSpecifiedAddress }ESearch;
+typedef enum { eSearchNone = 0, eSearchFromMemory, eSearchFromAddressList } ESearchSource;
 
 class CMemorySearchThread : public CWinThread
 {
