@@ -241,10 +241,8 @@
     <Image Include="res\Find.bmp" />
     <Image Include="res\Finding.bmp" />
     <Image Include="res\KinhHoang.bmp" />
-    <Image Include="res\KinhHoang.png" />
     <Image Include="res\mu.ico" />
     <Image Include="res\ProcessMemoryEditor.ico" />
-    <Image Include="res\U23VN.bmp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\HookEngine\HookEngine.vcxproj">

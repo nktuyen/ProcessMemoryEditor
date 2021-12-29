@@ -55,6 +55,8 @@ private:
     afx_msg void OnBnClickedBtnInject();
     afx_msg void OnEnChangeEdtInjectDll();
 	afx_msg void OnBnClickedBtnResetAddresses();
+	afx_msg void OnBnClickedBtnLoopSave();
+	afx_msg void OnEnChangeEdtLoopWriteTimeelapse();
 private:
     BOOL IsNumeric(LPCTSTR lpszString);
     void EnableWindows(HWND hWnd, BOOL bEnable);
@@ -63,6 +65,7 @@ private:
     BOOL PreTranslateMessage(MSG* pMsg);
     BOOL IsMyWindowFamily(CWnd* pWnd);
     CString GenerateRandomizeText(int nMaxLength);
+	BOOL WriteProcessDataToSpecifiedAddress(HANDLE hProcess);
 private:
 	CMySetting * m_pMySettings;
     static UINT s_nHookEngineNotifyMsg;
@@ -102,6 +105,7 @@ private:
     CButton m_btnReadProcessMemory;
     CEdit m_edtDataLength;
     CStatic m_sttProcessFromWnd;
+	INT_PTR m_nLoopWriteTimerID;
     CStatic m_sttStatusText;
     CButton m_radHexa;
     CButton m_radDecimal;
@@ -118,4 +122,6 @@ private:
 	CButton m_btnResetAddr;
 	CButton m_chkTopMost;
 	CMySetting* m_pSettings;
+	CEdit m_edtLoopWriteElapse;
+	CButton m_btnLoopWriteProcessMemory;
 };

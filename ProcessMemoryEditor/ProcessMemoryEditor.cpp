@@ -54,12 +54,16 @@ BOOL CProcessMemoryEditorApp::InitInstance()
 	return FALSE;
 }
 
+#define SETTINGS_KEY							_T("Settings")
+#define				TOPMOST_ENTRY				_T("TopMost")
+#define				LOOP_WRITE_ELAPSE_ENTRY		_T("LoopWriteElapse")
 
 void CProcessMemoryEditorApp::LoadSettings()
 {
 	CMySetting* pSettings = CMySetting::GetInstance(_T("NKTUYEN"));
 	if (pSettings) {
-		pSettings->SetTopMost(GetProfileInt(_T("Settings"), _T("TopMost"), 0));
+		pSettings->SetTopMost(GetProfileInt(SETTINGS_KEY, TOPMOST_ENTRY, 0));
+		pSettings->SetLoopWriteElapse(GetProfileString(SETTINGS_KEY, LOOP_WRITE_ELAPSE_ENTRY, _T("1")));
 	}
 }
 
@@ -67,6 +71,7 @@ void CProcessMemoryEditorApp::SaveSettings()
 {
 	CMySetting* pSettings = CMySetting::GetInstance(_T("NKTUYEN"));
 	if (pSettings) {
-		WriteProfileInt(_T("Settings"), _T("TopMost"), pSettings->IsTopMost());
+		WriteProfileInt(SETTINGS_KEY, TOPMOST_ENTRY, pSettings->IsTopMost());
+		WriteProfileString(SETTINGS_KEY, LOOP_WRITE_ELAPSE_ENTRY, pSettings->LoopWriteElapse());
 	}
 }

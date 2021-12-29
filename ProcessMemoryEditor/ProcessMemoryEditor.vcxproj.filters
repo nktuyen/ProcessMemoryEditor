@@ -113,12 +113,6 @@
     <Image Include="res\Finding.bmp">
       <Filter>Resource Files</Filter>
     </Image>
-    <Image Include="res\U23VN.bmp">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\KinhHoang.png">
-      <Filter>Resource Files</Filter>
-    </Image>
     <Image Include="res\KinhHoang.bmp">
       <Filter>Resource Files</Filter>
     </Image>

@@ -36,7 +36,9 @@ END_MESSAGE_MAP()
 BOOL CSplashDlg::OnInitDialog()
 {
     CDialog::OnInitDialog();
-
+	CRect rc;
+	m_sttImage.GetWindowRect(rc);
+	MoveWindow(rc);
 #ifdef _DEBUG
 	m_byAlpha = 255;
 #else
@@ -58,13 +60,14 @@ BOOL CSplashDlg::PreTranslateMessage(MSG* pMsg)
 
 void CSplashDlg::OnTimer(UINT_PTR nIDEvent)
 {
-    if (nIDEvent == m_nTimerId) {
+    if (nIDEvent == 1988) {
         if (m_byAlpha < 255) {
             m_byAlpha += 5;
 
             SetLayeredWindowAttributes(0, m_byAlpha, LWA_ALPHA);
         }
         else {
+			Sleep(1000);
             KillTimer(m_nTimerId);
             SendMessage(WM_CLOSE);
         }
