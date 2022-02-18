@@ -429,6 +429,8 @@ int CMemorySearchThread::SearchInSpecifiedAddresses()
         SIZE_T nReadBytes = 0;
 
         for (INT_PTR n = 0; n < nCount; n++) {
+			if(m_bStop)
+				break;
             lpCurrentAddress = m_arrAddress.GetAt(n);
             if (nullptr != lpCurrentAddress) {
                 ZeroMemory(pBuffer, m_nBufSize);

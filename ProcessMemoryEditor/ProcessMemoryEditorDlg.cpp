@@ -37,7 +37,7 @@ CProcessMemoryEditorDlg::CProcessMemoryEditorDlg(CMySetting* settings/* = NULL*/
     m_eSeachKind = ESearchSource::eSearchNone;
 	m_bInternalEditChanged = FALSE;
 	m_pSettings = settings;
-
+	m_bRandomizeTitle = TRUE;
     CString strMsgId;
     if (0 == s_nHookEngineNotifyMsg) {
         strMsgId.Format(_T("%s::HookEngineNotifyMessage::%p::%ld"), AfxGetAppName(), AfxGetInstanceHandle(), GetCurrentThreadId());
@@ -323,6 +323,7 @@ void CProcessMemoryEditorDlg::OnTimer(UINT_PTR nIDEvent)
     }
 	else if (nIDEvent == TIMER_ID_LOOP_WRITE) {
 		CString str;
+		static UINT nCount = 0;
 		m_btnLoopWriteProcessMemory.GetWindowText(str);
 		if (str.CompareNoCase(_T("|")) == 0) {
 			m_btnLoopWriteProcessMemory.SetWindowText(_T("/"));
@@ -336,11 +337,24 @@ void CProcessMemoryEditorDlg::OnTimer(UINT_PTR nIDEvent)
 		else {
 			m_btnLoopWriteProcessMemory.SetWindowText(_T("|"));
 		}
-		HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_dwProcessId);
-		if (NULL != hProcess) {
-			WriteProcessDataToSpecifiedAddress(hProcess);
-			CloseHandle(hProcess);
+		UINT nElapse = 1;
+		if (m_pSettings)
+			nElapse = _ttoi(m_pSettings->LoopWriteElapse());
+
+		if (nCount >= nElapse) {
+			HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_dwProcessId);
+			if (NULL != hProcess) {
+				if (WriteProcessDataToSpecifiedAddress(hProcess)) {
+					m_btnLoopWriteProcessMemory.SetWindowText(_T("OK"));
+				}
+				else {
+					m_btnLoopWriteProcessMemory.SetWindowText(_T("NG"));
+				}
+				CloseHandle(hProcess);
+			}
+			nCount = 0;
 		}
+		nCount++;
 	}
 }
 
@@ -641,6 +655,11 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
         EnableWindows(m_edtMemoryData.GetSafeHwnd(), FALSE);
         EnableWindows(m_lvwResults.GetSafeHwnd(), FALSE);
 		EnableWindows(m_btnResetAddr.GetSafeHwnd(), FALSE);
+		EnableWindows(m_btnWriteProcessMemory.GetSafeHwnd(), FALSE);
+		EnableWindows(m_btnLoopWriteProcessMemory.GetSafeHwnd(), FALSE);
+		EnableWindows(m_btnReadProcessMemory.GetSafeHwnd(), FALSE);
+		EnableWindows(m_edtLoopWriteElapse.GetSafeHwnd(), FALSE);
+
 
         m_btnStopSearch.EnableWindow(TRUE);
 
@@ -677,6 +696,10 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
         RestoreWindowsEnable(m_edtMemoryData.GetSafeHwnd());
         RestoreWindowsEnable(m_edtMemoryAddr.GetSafeHwnd());
 		RestoreWindowsEnable(m_btnResetAddr.GetSafeHwnd());
+		RestoreWindowsEnable(m_btnWriteProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_btnLoopWriteProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_btnReadProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 
         m_btnSearchFromAddressList.EnableWindow(m_lvwResults.GetItemCount() > 0);
         m_btnStopSearch.EnableWindow(FALSE);
@@ -863,10 +886,13 @@ void CProcessMemoryEditorDlg::OnListResultItemChanged()
 		KillTimer(m_nLoopWriteTimerID);
 		m_nLoopWriteTimerID = 0;
 		m_btnLoopWriteProcessMemory.SetWindowText(_T("Write &Each"));
-		RestoreWindowsEnable(m_btnLoopWriteProcessMemory);
+		RestoreWindowsEnable(m_btnLoopWriteProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 	}
-    m_btnWriteProcessMemory.EnableWindow(FALSE);
-	m_btnLoopWriteProcessMemory.EnableWindow(FALSE);
+	EnableWindows(m_btnWriteProcessMemory.GetSafeHwnd(), FALSE);
+	EnableWindows(m_btnLoopWriteProcessMemory.GetSafeHwnd(), FALSE);
+	EnableWindows(m_btnReadProcessMemory.GetSafeHwnd(), FALSE);
+	EnableWindows(m_btnSearchFromAddressList.GetSafeHwnd(), FALSE);
 
     if (0 >= m_arrMatchAddress.GetCount()) {
 		m_lvwResults.SetItemCount(0);
@@ -916,7 +942,8 @@ void CProcessMemoryEditorDlg::OnEnChangeEdtData()
 		KillTimer(m_nLoopWriteTimerID);
 		m_nLoopWriteTimerID = 0;
 		m_btnLoopWriteProcessMemory.SetWindowText(_T("Write &Each"));
-		RestoreWindowsEnable(m_btnLoopWriteProcessMemory);
+		RestoreWindowsEnable(m_btnLoopWriteProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 	}
 	m_btnWriteProcessMemory.EnableWindow((m_edtMemoryAddr.GetWindowTextLength() > 0) && (m_edtProcessID.GetWindowTextLength() > 0) && (m_edtMemoryData.GetWindowTextLength() > 0) && (m_cboDataTypes.GetCurSel() > 0));
 	m_btnLoopWriteProcessMemory.EnableWindow((m_edtMemoryAddr.GetWindowTextLength() > 0) && (m_edtProcessID.GetWindowTextLength() > 0) && (m_edtMemoryData.GetWindowTextLength() > 0) && (m_cboDataTypes.GetCurSel() > 0));
@@ -930,7 +957,8 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSave()
 		KillTimer(m_nLoopWriteTimerID);
 		m_nLoopWriteTimerID = 0;
 		m_btnLoopWriteProcessMemory.SetWindowText(_T("Write &Each"));
-		RestoreWindowsEnable(m_btnLoopWriteProcessMemory);
+		RestoreWindowsEnable(m_btnLoopWriteProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 	}
     CString strAddress;
     m_edtMemoryAddr.GetWindowText(strAddress);
@@ -965,7 +993,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSave()
 	EnableWindows(m_btnWriteProcessMemory.GetSafeHwnd(), FALSE);
 	WriteProcessDataToSpecifiedAddress(hProcess);
 	CloseHandle(hProcess);
-	RestoreWindowsEnable(m_btnWriteProcessMemory);
+	RestoreWindowsEnable(m_btnWriteProcessMemory.GetSafeHwnd());
 }
 
 BOOL CProcessMemoryEditorDlg::WriteProcessDataToSpecifiedAddress(HANDLE hProcess)
@@ -1173,7 +1201,8 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearchInAddresses()
 		KillTimer(m_nLoopWriteTimerID);
 		m_nLoopWriteTimerID = 0;
 		m_btnLoopWriteProcessMemory.SetWindowText(_T("Write &Each"));
-		RestoreWindowsEnable(m_btnLoopWriteProcessMemory);
+		RestoreWindowsEnable(m_btnLoopWriteProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 	}
 
 	m_bInternalEditChanged = TRUE;
@@ -1352,7 +1381,8 @@ void CProcessMemoryEditorDlg::OnEnChangeEdtAddress()
 		KillTimer(m_nLoopWriteTimerID);
 		m_nLoopWriteTimerID = 0;
 		m_btnLoopWriteProcessMemory.SetWindowText(_T("Write &Each"));
-		RestoreWindowsEnable(m_btnLoopWriteProcessMemory);
+		RestoreWindowsEnable(m_btnLoopWriteProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 	}
 	m_btnWriteProcessMemory.EnableWindow((m_edtMemoryAddr.GetWindowTextLength() > 0) && (m_edtProcessID.GetWindowTextLength() > 0) && (m_edtMemoryData.GetWindowTextLength() > 0) && (m_cboDataTypes.GetCurSel() > 0));
 	m_btnLoopWriteProcessMemory.EnableWindow((m_edtMemoryAddr.GetWindowTextLength() > 0) && (m_edtProcessID.GetWindowTextLength() > 0) && (m_edtMemoryData.GetWindowTextLength() > 0) && (m_cboDataTypes.GetCurSel() > 0));
@@ -1760,7 +1790,8 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnLoopSave()
 		KillTimer(m_nLoopWriteTimerID);
 		m_nLoopWriteTimerID = 0;
 		m_btnLoopWriteProcessMemory.SetWindowText(_T("Write &Each"));
-		RestoreWindowsEnable(m_btnLoopWriteProcessMemory);
+		RestoreWindowsEnable(m_btnLoopWriteProcessMemory.GetSafeHwnd());
+		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 	}
 	CString strAddress;
 	m_edtMemoryAddr.GetWindowText(strAddress);
@@ -1786,10 +1817,9 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnLoopSave()
 		return;
 	}
 
-	UINT nElapse = 1;
-	if (m_pSettings)
-		nElapse = (UINT)_ttoi(m_pSettings->LoopWriteElapse());
-	m_nLoopWriteTimerID = SetTimer(TIMER_ID_LOOP_WRITE, nElapse*1000, NULL);
+	EnableWindows(m_btnLoopWriteProcessMemory.GetSafeHwnd(), FALSE);
+	EnableWindows(m_edtLoopWriteElapse.GetSafeHwnd(), FALSE);
+	m_nLoopWriteTimerID = SetTimer(TIMER_ID_LOOP_WRITE, 1000, NULL);
 }
 
 
