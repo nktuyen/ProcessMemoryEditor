@@ -66,6 +66,7 @@ private:
     BOOL IsMyWindowFamily(CWnd* pWnd);
     CString GenerateRandomizeText(int nMaxLength);
 	BOOL WriteProcessDataToSpecifiedAddress(HANDLE hProcess);
+	void OnProcessChanged();
 private:
 	CMySetting * m_pMySettings;
     static UINT s_nHookEngineNotifyMsg;
@@ -96,7 +97,7 @@ private:
     CEdit m_edtMemoryData;
     DWORD m_dwProcessId;
     CButton m_btnWriteProcessMemory;
-    CEdit m_edtMemoryAddr;
+    //CEdit m_edtMemoryAddr;
     CButton m_btnLaunchProcess;
     CButton m_btnSearchFromAddressList;
     CArray<LPVOID, LPVOID> m_arrMatchAddress;
@@ -124,4 +125,6 @@ private:
 	CMySetting* m_pSettings;
 	CEdit m_edtLoopWriteElapse;
 	CButton m_btnLoopWriteProcessMemory;
+	CComboBox m_edtMemoryAddr;
+    CProcessSearchSetting* m_pCurProcessSetting;
 };

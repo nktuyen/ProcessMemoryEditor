@@ -12,8 +12,6 @@
 #define new DEBUG_NEW
 #endif
 
-
-
 CProcessMemoryEditorApp::CProcessMemoryEditorApp()
 {
 	
@@ -35,8 +33,8 @@ BOOL CProcessMemoryEditorApp::InitInstance()
 	InitCommonControlsEx(&InitCtrls);
 
 	CWinApp::InitInstance();
-	SetRegistryKey(_T("NKTUYEN"));
-	CMySetting* pSettings = CMySetting::GetInstance(_T("NKTUYEN"));
+	SetRegistryKey(APP_AUTHOR);
+	CMySetting* pSettings = CMySetting::GetInstance(APP_NAME);
 
     CSplashDlg splashDlg;
     splashDlg.DoModal();
@@ -54,24 +52,31 @@ BOOL CProcessMemoryEditorApp::InitInstance()
 	return FALSE;
 }
 
-#define SETTINGS_KEY							_T("Settings")
-#define				TOPMOST_ENTRY				_T("TopMost")
-#define				LOOP_WRITE_ELAPSE_ENTRY		_T("LoopWriteElapse")
-
 void CProcessMemoryEditorApp::LoadSettings()
 {
-	CMySetting* pSettings = CMySetting::GetInstance(_T("NKTUYEN"));
-	if (pSettings) {
-		pSettings->SetTopMost(GetProfileInt(SETTINGS_KEY, TOPMOST_ENTRY, 0));
-		pSettings->SetLoopWriteElapse(GetProfileString(SETTINGS_KEY, LOOP_WRITE_ELAPSE_ENTRY, _T("1")));
+	CMySetting* pSettings = CMySetting::GetInstance(APP_NAME);
+	CRegKey regKey;
+	CString strSubKey;
+	strSubKey.Format(_T("SOFTWARE\\%s"), APP_AUTHOR);
+	if (regKey.Open(HKEY_CURRENT_USER, strSubKey) == ERROR_SUCCESS) {
+		*(pSettings) << regKey;
 	}
 }
 
 void CProcessMemoryEditorApp::SaveSettings()
 {
-	CMySetting* pSettings = CMySetting::GetInstance(_T("NKTUYEN"));
+	CMySetting* pSettings = CMySetting::GetInstance(APP_NAME);
 	if (pSettings) {
-		WriteProfileInt(SETTINGS_KEY, TOPMOST_ENTRY, pSettings->IsTopMost());
-		WriteProfileString(SETTINGS_KEY, LOOP_WRITE_ELAPSE_ENTRY, pSettings->LoopWriteElapse());
+		
+		CString strSubKey;
+		strSubKey.Format(_T("SOFTWARE\\%s"), APP_AUTHOR);
+
+		CRegKey regKey;
+		DWORD dwDispos = 0;
+		LSTATUS res = regKey.Create(HKEY_CURRENT_USER, strSubKey, nullptr, 0, KEY_ALL_ACCESS, nullptr, &dwDispos);
+		if ((res == ERROR_SUCCESS) || (dwDispos == 1 || dwDispos == 2))
+		{
+			*(pSettings) >> regKey;
+		}
 	}
 }

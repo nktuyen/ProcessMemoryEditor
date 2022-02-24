@@ -38,6 +38,7 @@ CProcessMemoryEditorDlg::CProcessMemoryEditorDlg(CMySetting* settings/* = NULL*/
 	m_bInternalEditChanged = FALSE;
 	m_pSettings = settings;
 	m_bRandomizeTitle = TRUE;
+    m_pCurProcessSetting = nullptr;
     CString strMsgId;
     if (0 == s_nHookEngineNotifyMsg) {
         strMsgId.Format(_T("%s::HookEngineNotifyMessage::%p::%ld"), AfxGetAppName(), AfxGetInstanceHandle(), GetCurrentThreadId());
@@ -98,7 +99,6 @@ void CProcessMemoryEditorDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_RAD_PROCESS_ID, m_radProcID);
 	DDX_Control(pDX, IDC_EDT_DATA, m_edtMemoryData);
 	DDX_Control(pDX, IDC_BTN_SAVE, m_btnWriteProcessMemory);
-	DDX_Control(pDX, IDC_EDT_ADDRESS, m_edtMemoryAddr);
 	DDX_Control(pDX, IDC_BTN_BROWSE_LAUNCH, m_btnLaunchProcess);
 	DDX_Control(pDX, IDC_BTN_SEARCH_IN_ADDRESSES, m_btnSearchFromAddressList);
 	DDX_Control(pDX, IDC_BTN_READ, m_btnReadProcessMemory);
@@ -118,6 +118,7 @@ void CProcessMemoryEditorDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_CHB_TOPMOST, m_chkTopMost);
 	DDX_Control(pDX, IDC_EDT_LOOP_WRITE_TIMEELAPSE, m_edtLoopWriteElapse);
 	DDX_Control(pDX, IDC_BTN_LOOP_SAVE, m_btnLoopWriteProcessMemory);
+	DDX_Control(pDX, IDC_CB_WORKING_ADDRESS, m_edtMemoryAddr);
 }
 
 BEGIN_MESSAGE_MAP(CProcessMemoryEditorDlg, CDialogEx)
@@ -223,8 +224,6 @@ BOOL CProcessMemoryEditorDlg::OnInitDialog()
 	if (m_pSettings) {
 		CheckDlgButton(IDC_CHB_TOPMOST, m_pSettings->IsTopMost()? BST_CHECKED: BST_UNCHECKED);
 		OnBnClickedChbTopmost();
-
-		m_edtLoopWriteElapse.SetWindowText(m_pSettings->LoopWriteElapse());
 	}
 
 	return TRUE;
@@ -338,8 +337,8 @@ void CProcessMemoryEditorDlg::OnTimer(UINT_PTR nIDEvent)
 			m_btnLoopWriteProcessMemory.SetWindowText(_T("|"));
 		}
 		UINT nElapse = 1;
-		if (m_pSettings)
-			nElapse = _ttoi(m_pSettings->LoopWriteElapse());
+		if (m_pCurProcessSetting)
+			nElapse = _ttoi(m_pCurProcessSetting->LoopWriteElapse());
 
 		if (nCount >= nElapse) {
 			HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_dwProcessId);
@@ -597,6 +596,10 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSearch()
             }
         }
 
+        if (m_pCurProcessSetting != nullptr) {
+            m_pCurProcessSetting->SetSearchValue(strVal);
+            m_pCurProcessSetting->SetDataType(eType);
+        }
         m_eSeachKind = ESearchSource::eSearchFromMemory;
         m_btnSearchFromMemory.EnableWindow(FALSE);
     }
@@ -634,8 +637,11 @@ LRESULT CProcessMemoryEditorDlg::OnThreadMessage(WPARAM wParam, LPARAM lParam)
     case EThreadNotifyCode::eStart:
     {
         m_arrMatchAddress.RemoveAll();
-		if(m_eSeachKind == eSearchFromMemory)
-			m_arrOriginalAddress.RemoveAll();
+        if (m_eSeachKind == eSearchFromMemory)
+        {
+            m_arrOriginalAddress.RemoveAll();
+            m_edtMemoryAddr.ResetContent();
+        }
 		m_lvwResults.DeleteAllItems();
         OnListResultItemChanged();
 
@@ -923,12 +929,7 @@ void CProcessMemoryEditorDlg::OnListResultItemChanged()
     CString strAddress;
     CString strData;
 
-    if (IsDlgButtonChecked(IDC_RAD_HEXA)) {
-        strAddress.Format(_T("0x%p"), m_arrMatchAddress.GetAt(nIndex));
-    }
-    else  if (IsDlgButtonChecked(IDC_RAD_DECIMAL)) {
-        strAddress.Format(_T("%ld"), reinterpret_cast<DWORD_PTR>(m_arrMatchAddress.GetAt(nIndex)));
-    }
+    strAddress.Format(_T("%ld"), reinterpret_cast<DWORD_PTR>(m_arrMatchAddress.GetAt(nIndex)));
 
     m_edtMemoryAddr.SetWindowText(strAddress);
     m_edtSearchValue.GetWindowText(strData);
@@ -961,7 +962,9 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSave()
 		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 	}
     CString strAddress;
-    m_edtMemoryAddr.GetWindowText(strAddress);
+    CWnd* pEdit = m_edtMemoryAddr.GetWindow(GW_CHILD);
+    if(pEdit)
+        pEdit->GetWindowText(strAddress);
     if (strAddress.IsEmpty()) {
         AfxMessageBox(_T("Please input memory address!"));
         m_edtMemoryAddr.SetFocus();
@@ -991,7 +994,10 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnSave()
 	}
 
 	EnableWindows(m_btnWriteProcessMemory.GetSafeHwnd(), FALSE);
-	WriteProcessDataToSpecifiedAddress(hProcess);
+    if (WriteProcessDataToSpecifiedAddress(hProcess))
+    {
+        
+    }
 	CloseHandle(hProcess);
 	RestoreWindowsEnable(m_btnWriteProcessMemory.GetSafeHwnd());
 }
@@ -1000,6 +1006,7 @@ BOOL CProcessMemoryEditorDlg::WriteProcessDataToSpecifiedAddress(HANDLE hProcess
 {
 	CString strAddress;
 	CString strProcID;
+    CString strEditData;
 
 	int nDataSize = GetDlgItemInt(IDC_EDT_DATA_LENGTH);
 	switch (static_cast<EDataType>(m_cboDataTypes.GetCurSel()))
@@ -1012,8 +1019,16 @@ BOOL CProcessMemoryEditorDlg::WriteProcessDataToSpecifiedAddress(HANDLE hProcess
 		break;
 	}
 
-	m_edtMemoryAddr.GetWindowText(strAddress);
+    CWnd* pEdit = m_edtMemoryAddr.GetWindow(GW_CHILD);
+    if(pEdit)
+        pEdit->GetWindowText(strAddress);
+
 	m_edtProcessID.GetWindowText(strProcID);
+    if (m_pCurProcessSetting) {
+        m_pCurProcessSetting->SetLastAddress(strAddress);
+        m_edtMemoryData.GetWindowText(strEditData);
+        m_pCurProcessSetting->SetLastData(strEditData);
+    }
 
 	BYTE* pBuffer = new BYTE[nDataSize + 1];
 	ZeroMemory(pBuffer, nDataSize + 1);
@@ -1124,6 +1139,13 @@ BOOL CProcessMemoryEditorDlg::WriteProcessDataToSpecifiedAddress(HANDLE hProcess
 
 	delete[] pBuffer;
 	pBuffer = nullptr;
+
+    int iIndex = m_edtMemoryAddr.FindString(-1, strAddress);
+    if (iIndex == CB_ERR)
+    {
+        m_edtMemoryAddr.AddString(strAddress);
+    }
+
 	return TRUE;
 }
 
@@ -1168,6 +1190,7 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnBrowseLaunch()
     m_edtProcessID.SetWindowText(strProcName);
     m_btnLaunchProcess.EnableWindow(FALSE);
     m_btnSearchFromMemory.EnableWindow(m_edtProcessID.GetWindowTextLength() > 0);
+	OnProcessChanged();
 }
 
 
@@ -1367,7 +1390,7 @@ void CProcessMemoryEditorDlg::OnLvnGetdispinfoLvwResults(NMHDR *pNMHDR, LRESULT 
         else if (1 == pDispInfo->item.iSubItem) {
             LPVOID lpAddr = m_arrMatchAddress[pDispInfo->item.iItem];
             CString strAddr;
-            strAddr.Format(_T("0x%p"), lpAddr);
+            strAddr.Format(_T("%ld"), lpAddr);
             _tcscpy_s(pDispInfo->item.pszText, pDispInfo->item.cchTextMax, (LPCTSTR)strAddr);
         }
     }
@@ -1393,7 +1416,11 @@ void CProcessMemoryEditorDlg::OnEnChangeEdtAddress()
 void CProcessMemoryEditorDlg::OnBnClickedBtnRead()
 {
     CString strAddress;
-    m_edtMemoryAddr.GetWindowText(strAddress);
+    
+    CWnd* pEdit = m_edtMemoryAddr.GetWindow(GW_CHILD);
+    if(pEdit)
+        pEdit->GetWindowText(strAddress);
+
     if (strAddress.IsEmpty()) {
         AfxMessageBox(_T("Please input memory address!"));
         m_edtMemoryAddr.SetFocus();
@@ -1619,6 +1646,7 @@ LRESULT CProcessMemoryEditorDlg::OnMouseHookEngineNotify(WPARAM wParam, LPARAM l
 								szProcName[dwProcName] = 0;
 							}
 							m_edtProcessName.SetWindowText(szProcName);
+							OnProcessChanged();
 						}
 						CloseHandle(hProcess);
 					}
@@ -1794,7 +1822,11 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnLoopSave()
 		RestoreWindowsEnable(m_edtLoopWriteElapse.GetSafeHwnd());
 	}
 	CString strAddress;
-	m_edtMemoryAddr.GetWindowText(strAddress);
+    CWnd* pEdit = m_edtMemoryAddr.GetWindow(GW_CHILD);
+    if(pEdit)
+        pEdit->GetWindowText(strAddress);
+
+
 	if (strAddress.IsEmpty()) {
 		AfxMessageBox(_T("Please input memory address!"));
 		m_edtMemoryAddr.SetFocus();
@@ -1825,10 +1857,50 @@ void CProcessMemoryEditorDlg::OnBnClickedBtnLoopSave()
 
 void CProcessMemoryEditorDlg::OnEnChangeEdtLoopWriteTimeelapse()
 {
-	if (m_pSettings) {
+	if (m_pCurProcessSetting) {
 		CString str;
 		m_edtLoopWriteElapse.GetWindowText(str);
-		if (str.IsEmpty() == FALSE)
-			m_pSettings->SetLoopWriteElapse(str);
+		if ((str.IsEmpty() == FALSE) && (m_pCurProcessSetting))
+            m_pCurProcessSetting->SetLoopWriteElapse(str);
 	}
+}
+
+void CProcessMemoryEditorDlg::OnProcessChanged()
+{
+    m_arrOriginalAddress.RemoveAll();
+    m_btnResetAddr.EnableWindow(m_arrOriginalAddress.GetCount() > 0);
+    m_edtMemoryAddr.ResetContent();
+    OnBnClickedBtnResetAddresses();
+    CString strProcess;
+    m_edtProcessName.GetWindowText(strProcess);
+    if (!strProcess.IsEmpty()) {
+        CProcessSearchSetting* pProcSettings = m_pSettings->GetProcessSettings(strProcess);
+        if (pProcSettings == nullptr) {
+            CString strSearchValue;
+            
+            m_edtSearchValue.GetWindowText(strSearchValue);
+            pProcSettings = m_pSettings->AddProcessSettings(strProcess, strSearchValue, (EDataType)m_cboDataTypes.GetCurSel());
+        }
+
+        m_pCurProcessSetting = pProcSettings;
+        if (m_pCurProcessSetting) {
+            m_edtSearchValue.SetWindowText(m_pCurProcessSetting->SearchValue());
+            m_cboDataTypes.SetCurSel(m_pCurProcessSetting->DataType());
+            OnCbnSelchangeCbDataType();
+
+            if (m_pCurProcessSetting->LastAddress().IsEmpty() == FALSE) {
+                long long llAddr = _ttoll(m_pCurProcessSetting->LastAddress());
+                DWORD_PTR ldwptrAddr = static_cast<DWORD_PTR>(llAddr);
+                LPVOID lpAddr = reinterpret_cast<LPVOID>(ldwptrAddr);
+                m_arrOriginalAddress.Add(lpAddr);
+                m_arrMatchAddress.Copy(m_arrOriginalAddress);
+                m_btnResetAddr.EnableWindow(m_arrOriginalAddress.GetCount() > 0);
+                OnListResultItemChanged();
+                m_edtMemoryAddr.AddString(m_pCurProcessSetting->LastAddress());
+                m_edtMemoryAddr.SetWindowText(m_pCurProcessSetting->LastAddress());
+            }
+            m_edtMemoryData.SetWindowText(m_pCurProcessSetting->LastData());
+            m_edtLoopWriteElapse.SetWindowText(m_pCurProcessSetting->LoopWriteElapse());
+        }
+    }
 }
